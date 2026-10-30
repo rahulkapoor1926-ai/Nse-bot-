@@ -199,6 +199,25 @@ def cmd_sahi_check(a):
     print("read-only connection verified from this machine")
 
 
+def _hhmm(v):
+    try:
+        dt.datetime.strptime(v, "%H:%M")
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected HH:MM, got %r" % v)
+    return v
+
+
+def _should_stop(a, cal, now):
+    """Scheduled runs (for example GitHub Actions) end at --until or on a non-trading day."""
+    if not cal.is_trading_day(now.date()):
+        print("%s is not an NSE trading day; exiting" % now.date().isoformat())
+        return True
+    if a.until and now >= clock.at(now.date(), a.until):
+        print("reached --until %s IST; exiting (state is saved after every cycle)" % a.until)
+        return True
+    return False
+
+
 def cmd_paper(a):
     from . import bot
     from .broker.paper import PaperBroker
@@ -214,6 +233,8 @@ def cmd_paper(a):
     print(report.BANNER)
     while True:
         now = clock.now_ist()
+        if _should_stop(a, cal, now):
+            return
         book = risk.RiskBook.open(cfg["state_dir"], now.date())
         al = Alerts(cfg["state_dir"], now.date())
         ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest)
@@ -238,6 +259,8 @@ def cmd_record(a):
     print("recording %d-minute bars to %s (Ctrl-C to stop)" % (a.interval, a.out))
     while True:
         now = clock.now_ist()
+        if _should_stop(a, cal, now):
+            return
         st = cal.status(now)
         if not st["open"]:
             if now.time() > clock.SESSION_CLOSE or a.once:
@@ -304,6 +327,8 @@ def build_parser():
             s.add_argument("--dataset", action="append", help="dataset each strategy was approved on, same order")
             s.add_argument("--every", type=int, default=15)
             s.add_argument("--once", action="store_true")
+        if name in ("paper", "record"):
+            s.add_argument("--until", type=_hhmm, help="IST time HH:MM at which to exit (for scheduled jobs)")
         if name == "fetch-history":
             s.add_argument("--start", required=True); s.add_argument("--end", required=True)
             s.add_argument("--interval", type=int, default=5); s.add_argument("--out", required=True)

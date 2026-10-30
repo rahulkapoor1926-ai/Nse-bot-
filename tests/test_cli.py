@@ -83,3 +83,35 @@ class Cli(unittest.TestCase):
             self.assertIn("SAHI_KEY_ID", err)
         finally:
             os.environ.update(env)
+
+
+class ScheduledStop(unittest.TestCase):
+    """--until and the non-trading-day exit let a scheduled job end cleanly."""
+
+    def setUp(self):
+        from nse_bot import clock
+        self.clock = clock
+        self.cal = clock.Calendar.load("nse_bot/data/nse_holidays.json")
+
+    def args(self, until):
+        return cli.build_parser().parse_args(["paper", "--strategy", "x.json"] + (["--until", until] if until else []))
+
+    def at(self, day, hhmm):
+        import datetime as dt
+        return self.clock.at(dt.date.fromisoformat(day), hhmm)
+
+    def test_until(self):
+        a = self.args("12:15")
+        with redirect_stdout(io.StringIO()):
+            self.assertFalse(cli._should_stop(a, self.cal, self.at("2026-11-12", "12:14")))
+            self.assertTrue(cli._should_stop(a, self.cal, self.at("2026-11-12", "12:15")))
+            self.assertFalse(cli._should_stop(self.args(None), self.cal, self.at("2026-11-12", "15:00")))
+
+    def test_holiday_and_weekend_exit(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertTrue(cli._should_stop(self.args(None), self.cal, self.at("2026-11-10", "10:00")))  # Diwali
+            self.assertTrue(cli._should_stop(self.args(None), self.cal, self.at("2026-11-14", "10:00")))  # Saturday
+
+    def test_bad_until_refused(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.args("25:99")

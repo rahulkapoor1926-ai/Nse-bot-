@@ -1,0 +1,96 @@
+# Paper trading on GitHub Actions: read-only SAHI data, simulated fills only.
+# No live orders are possible: the code has no order endpoint and the config
+# refuses live mode. Secrets come from GitHub Secrets, never from files.
+#
+# A job may run at most 6 hours and the NSE session is 6 h 15 min, so the day
+# is split in two. The concurrency group makes the second job wait for the
+# first. Risk state, the paper ledger and recordings live on the `paper-state`
+# branch and are saved after each job, so the lockout survives restarts.
+name: paper-day
+
+on:
+  schedule:
+    - cron: "35 3 * * 1-5"    # 09:05 IST, morning half (exits 12:15)
+    - cron: "40 6 * * 1-5"    # 12:10 IST, afternoon half (exits after the close)
+  workflow_dispatch:
+    inputs:
+      until:
+        description: "IST time HH:MM to stop (blank = session close)"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-day
+  cancel-in-progress: false
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      TZ: Asia/Kolkata
+      SAHI_KEY_ID: ${{ secrets.SAHI_KEY_ID }}
+      SAHI_KEY_SECRET: ${{ secrets.SAHI_KEY_SECRET }}
+      SAHI_TOTP: ${{ secrets.SAHI_TOTP }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trading day?
+        id: day
+        run: |
+          cp config/paper.example.json config/paper.json
+          python3 -m nse_bot --config config/paper.json validate-config
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import datetime as dt
+          from nse_bot import clock
+          cal = clock.Calendar.load("nse_bot/data/nse_holidays.json")
+          print("trading=%s" % str(cal.is_trading_day(clock.now_ist().date())).lower())
+          PY
+
+      - name: Restore state
+        if: steps.day.outputs.trading == 'true'
+        run: |
+          git config user.name "paper-bot"
+          git config user.email "paper-bot@users.noreply.github.com"
+          if git fetch origin +refs/heads/paper-state:refs/remotes/origin/paper-state; then
+            git worktree add state origin/paper-state
+            git -C state checkout -B paper-state
+          else
+            git worktree add --orphan -b paper-state state
+          fi
+
+      - name: Unit tests
+        if: steps.day.outputs.trading == 'true'
+        run: scripts/test_all.sh
+
+      - name: Paper trade and record
+        if: steps.day.outputs.trading == 'true'
+        env:
+          UNTIL_INPUT: ${{ github.event.inputs.until }}
+        run: |
+          if [ -n "$UNTIL_INPUT" ]; then UNTIL="$UNTIL_INPUT";
+          elif [ "$(date +%H)" -lt 12 ]; then UNTIL=12:15; else UNTIL=15:35; fi
+          echo "running until $UNTIL IST"
+          python3 -m nse_bot --config config/paper.json record --refresh-master --until "$UNTIL" &
+          REC=$!
+          sleep 20
+          PAPER=0
+          python3 -m nse_bot --config config/paper.json paper --until "$UNTIL" --every 30 \
+            --strategy config/strategies/orb15-equity.example.json \
+            --strategy config/strategies/orb15.example.json || PAPER=$?
+          RECORD=0
+          wait $REC || RECORD=$?
+          python3 -m nse_bot --config config/paper.json risk-status || true
+          python3 -m nse_bot --config config/paper.json report || true
+          echo "paper exit $PAPER, record exit $RECORD"
+          [ "$PAPER" -eq 0 ] && [ "$RECORD" -eq 0 ]
+
+      - name: Save state
+        if: always() && steps.day.outputs.trading == 'true'
+        run: |
+          cd state
+          git add -A
+          git commit -q -m "paper state $(date +%F_%H%M) IST" || echo "nothing to save"
+          git push origin paper-state

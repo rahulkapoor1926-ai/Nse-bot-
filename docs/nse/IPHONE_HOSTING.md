@@ -57,22 +57,42 @@ trading day.
   follow `docs/nse/DEPLOY.md`.
 - Catch: more setup steps, and the card requirement.
 
-## Step by step for Option A (only after you choose it)
+## Step by step for Option A (you chose this on 2026-10-30)
+
+The workflow is ready in `.github/workflows/paper-day.yml` (plus `tests.yml`,
+which runs every test on each push).
 
 1. In Safari, create a free GitHub account, then create an empty **public**
-   repository (for example `nse-trading-bot`).
+   repository (for example `nse-trading-bot`). Leave "Add a README" unticked.
 2. Open [Connect GitHub](https://claude.ai/connect-github) and give Claude
-   access to that repository, then tell me its name. I push the project and a
-   workflow file. You type nothing technical.
-3. Get read-only market-data credentials from your broker (SAHI: an API key
-   with only `marketdata.read`; Angel One: a SmartAPI key). Do not paste them
-   into chat.
+   access to that repository, then tell me its name. I push the project. You
+   type nothing technical.
+3. Create a SAHI API key with only the `marketdata.read` scope. Do not paste
+   anything from it into chat.
 4. In the repository on GitHub: Settings → Secrets and variables → Actions →
-   New repository secret. Add each credential there.
-5. Each trading morning, approve the API key in the broker app if it requires
-   daily approval (SAHI does).
-6. Results appear in the repository (`state/` folder and the job log). I can
-   read and summarise them for you in this chat.
+   New repository secret. Add `SAHI_KEY_ID` and `SAHI_KEY_SECRET` (and
+   `SAHI_TOTP` only if SAHI asks for one).
+5. Each trading morning before 09:05 IST, approve the API key in the SAHI app
+   (SAHI tokens expire at 06:00 IST every day).
+6. To try it at any time: Actions tab → paper-day → Run workflow. On a holiday
+   or weekend it stops at once.
+7. Results: the job log (Actions tab) shows the SIMULATED report, and the
+   `paper-state` branch holds the ledger, risk lockout and recordings. I can
+   read and summarise them for you here.
+
+How the day runs: one job at 09:05 IST that stops at 12:15, and one at 12:10
+IST that waits for the first to finish and stops after the close. Each job
+runs the tests first, then `record` (builds real bid/ask history for the
+validation gate) and `paper` (stock/ETF strategy first, then options). Until a
+strategy passes the 10,000-example gate, `paper` only alerts candidates and
+never enters a simulated trade. State is saved even if a job fails.
+
+Things to know:
+- GitHub can start scheduled jobs late, sometimes by 10–30 minutes at busy times.
+- GitHub pauses schedules in a public repository after 60 days without
+  activity; the Actions tab then shows a button to re-enable them.
+- Not yet verified: whether SAHI accepts API calls from GitHub's servers (some
+  brokers restrict by IP). The first manual run will show this.
 
 ## Angel One SmartAPI: feasibility
 
