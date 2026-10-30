@@ -35,7 +35,7 @@ jobs:
       SAHI_KEY_SECRET: ${{ secrets.SAHI_KEY_SECRET }}
       SAHI_TOTP: ${{ secrets.SAHI_TOTP }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Trading day?
         id: day
@@ -93,4 +93,5 @@ jobs:
           cd state
           git add -A
           git commit -q -m "paper state $(date +%F_%H%M) IST" || echo "nothing to save"
-          git push origin paper-state
+          for i in 1 2 3 4; do git push origin paper-state && exit 0; sleep $((i * 5)); done
+          exit 1
