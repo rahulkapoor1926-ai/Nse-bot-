@@ -1,0 +1,5 @@
+instruments.csv
+*.part
+recordings/
+logs/
+.tmp-*
