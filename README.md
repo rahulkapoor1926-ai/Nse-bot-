@@ -35,6 +35,7 @@ Run every command from the repository root (config paths are relative to it).
 | `build-dataset --out DIR --name N [--kind equity]` | turns recordings into a dataset for `gate` |
 | `paper --strategy FILE [--dataset DIR] [--until HH:MM] ...` | paper-trading loop; repeat `--strategy` to run stocks first, then options; `--until` ends a scheduled run |
 | `risk-status`, `report` | today's lockout state; read-only SIMULATED report |
+| `dashboard` | rebuilds `state/dashboard/data.json` for the web dashboard (read-only) |
 | `news --feeds FILE` | headlines from your feeds plus scheduled events |
 | `pelosi` | why the US Pelosi tracker has no Indian counterpart here |
 
@@ -92,3 +93,4 @@ See `docs/nse/AUDIT.md` for what that means in practice.
 - `docs/nse/DEPLOY.md` running it on a computer or server
 - `docs/nse/RECOVERY.md` corrupted state, expired tokens, missing data, API failures
 - `docs/nse/IPHONE_HOSTING.md` free hosting on GitHub Actions, run from an iPhone
+- `docs/nse/DASHBOARD_PLAN.md` the paper-trading P&L dashboard (GitHub Pages) and what it makes public

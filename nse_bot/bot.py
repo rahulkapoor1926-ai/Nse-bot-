@@ -31,6 +31,8 @@ class Context(object):
         self.events = list(events)
         # {strategy name: digest} or one digest for every strategy
         self.dataset_digest = dataset_digest
+        # latest bid and unrealised P&L per open position, for the dashboard only
+        self.marks = {}
 
 
 def enabled(ctx, strategy):
@@ -92,13 +94,17 @@ def manage_positions(ctx, now, ulast):
                     "invalidate_above": meta.get("invalidate_above")}
         decision = exit_mod.evaluate(position, q, now, ctx.cfg, ulast.get(c.underlying))
         if decision["action"] == "NO_PRICE":
+            ctx.marks[iid] = {"bid": None, "time": now.isoformat(), "unrealized": None,
+                              "note": decision["reason"]}
             ctx.alerts.emit("stale_data", "exit-%s-%s" % (iid, now.strftime("%H%M")), decision["reason"], now)
             events.append(("no_price", iid))
             continue
         bid = decision["price"]
         avg = p["cost"] / p["qty"]
         est_exit = ctx.costs.leg("SELL", bid, p["qty"], now.date(), c.cost_segment)["total"]
-        ctx.risk.mark((bid - avg) * p["qty"] - p["charges"] - est_exit, ctx.cfg, now)
+        unrealized = (bid - avg) * p["qty"] - p["charges"] - est_exit
+        ctx.marks[iid] = {"bid": bid, "time": now.isoformat(), "unrealized": round(unrealized, 2)}
+        ctx.risk.mark(unrealized, ctx.cfg, now)
         if decision["action"] != "EXIT":
             continue
         res = ctx.broker.sell(c, p["qty"], q, now, meta={"reason": decision["reason"]})

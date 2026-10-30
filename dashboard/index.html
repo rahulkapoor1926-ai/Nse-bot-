@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Paper P&amp;L">
+<title>Paper P&amp;L</title>
+<!--
+  Read-only view of the NSE bot's SIMULATED paper trading.
+  Data: dashboard/data.json on the paper-state branch, written by the bot
+  (nse_bot/dashboard.py). This page has no keys and no trade buttons.
+-->
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #14171c; --muted: #5d6673; --line: #e3e6ea;
+  --up: #0f7b45; --down: #c0362c; --warn: #9a6400; --accent: #2b5fd9; --chip: #eef1f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --card: #171b21; --ink: #e8ebef; --muted: #98a2b0; --line: #2a3039;
+    --up: #3fbf7f; --down: #ef6a5e; --warn: #e0a83a; --accent: #7aa2ff; --chip: #222831;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: max(12px, env(safe-area-inset-top)) 16px 32px; }
+main { max-width: 860px; margin: 0 auto; }
+.banner { background: var(--chip); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 12px; font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.banner b { color: var(--ink); }
+header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 22px 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px;
+  padding: 4px 10px; border-radius: 999px; background: var(--chip); white-space: nowrap; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.Running .dot { background: var(--up); } .Error .dot { background: var(--down); } .Stopped .dot { background: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 640px) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.k { font-size: 12px; color: var(--muted); }
+.v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+.up { color: var(--up); } .down { color: var(--down); }
+.meter { height: 8px; background: var(--chip); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.meter > div { height: 100%; background: var(--up); }
+.meter.low > div { background: var(--warn); } .meter.out > div { background: var(--down); }
+.sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.list { display: grid; gap: 8px; }
+.row { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.row .top { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.row .top span:first-child { overflow-wrap: anywhere; }
+.row .top span:last-child { white-space: nowrap; }
+.row dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; margin: 8px 0 0; font-size: 13px; }
+.row dt { color: var(--muted); font-size: 11px; } .row dd { margin: 0; font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); font-size: 14px; padding: 10px 0; }
+svg { width: 100%; height: 160px; display: block; }
+.err { background: var(--card); border: 1px solid var(--down); color: var(--down); border-radius: 12px; padding: 10px 12px; margin-top: 10px; font-size: 13px; overflow-wrap: anywhere; }
+footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <div class="banner"><b>SIMULATED.</b> Paper trading only. Live orders are disabled. Not evidence of future profit.</div>
+  <header>
+    <h1>Paper P&amp;L</h1>
+    <span id="status" class="status Stopped"><span class="dot"></span><span id="status-text">Loading</span></span>
+  </header>
+  <div id="errors"></div>
+
+  <div class="grid">
+    <div class="card"><div class="k">Today's P&amp;L</div><div class="v" id="day-pnl">–</div><div class="sub" id="day-sub"></div></div>
+    <div class="card"><div class="k">Total P&amp;L</div><div class="v" id="total-pnl">–</div><div class="sub" id="total-sub"></div></div>
+    <div class="card"><div class="k">Available</div><div class="v" id="available">–</div><div class="sub" id="capital"></div></div>
+    <div class="card"><div class="k">Deployed</div><div class="v" id="deployed">–</div><div class="sub" id="open-count"></div></div>
+  </div>
+
+  <h2>Daily risk</h2>
+  <div class="card">
+    <div class="k">Remaining before the daily loss limit</div>
+    <div class="v" id="risk-left">–</div>
+    <div class="meter" id="risk-meter"><div style="width:0"></div></div>
+    <div class="sub" id="risk-sub"></div>
+  </div>
+
+  <h2>Performance</h2>
+  <div class="grid">
+    <div class="card"><div class="k">Completed trades</div><div class="v" id="n-trades">–</div></div>
+    <div class="card"><div class="k">Win rate</div><div class="v" id="win-rate">–</div><div class="sub" id="wins"></div></div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div class="k">Equity curve (after charges)</div>
+    <div id="curve"></div>
+  </div>
+
+  <h2>Open positions</h2>
+  <div class="list" id="positions"></div>
+
+  <h2>Completed trades</h2>
+  <div class="list" id="trades"></div>
+
+  <footer>
+    <div id="updated">Not loaded yet.</div>
+    <div>Updates when the bot saves to GitHub, about every 5 minutes in market hours. This page reloads its data every minute.</div>
+  </footer>
+</main>
+<script>
+(function () {
+  // owner.github.io/<repo>/ -> raw file on the paper-state branch of that repo
+  var owner = location.hostname.split(".")[0];
+  var repo = location.pathname.split("/").filter(Boolean)[0];
+  var params = new URLSearchParams(location.search);
+  var src = params.get("data") ||
+    ("https://raw.githubusercontent.com/" + owner + "/" + repo + "/paper-state/dashboard/data.json");
+
+  var inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
+  function money(x) { return x === null || x === undefined ? "–" : inr.format(x); }
+  function signed(x) { return x === null || x === undefined ? "–" : (x > 0 ? "+" : "") + inr.format(x); }
+  function cls(x) { return x > 0 ? "up" : x < 0 ? "down" : ""; }
+  function when(s) {
+    if (!s) return "–";
+    var d = new Date(s);
+    return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  }
+  function el(id) { return document.getElementById(id); }
+  function setPnl(id, x) { var e = el(id); e.textContent = signed(x); e.className = "v " + cls(x); }
+  function esc(s) { return String(s === null || s === undefined ? "–" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function status(d) {
+    // Recomputed here so a stopped job shows as Stopped even if the last saved file said Running.
+    var b = d.bot || {};
+    var s = b.status;
+    if (s === "Running" && b.heartbeat) {
+      var age = (Date.now() - new Date(b.heartbeat).getTime()) / 1000;
+      if (age > (b.stale_after_seconds || 180) + 600) s = "Stopped";   // allow for GitHub save delay
+    }
+    el("status").className = "status " + s;
+    el("status-text").textContent = s;
+    return s;
+  }
+
+  function curve(points) {
+    var box = el("curve");
+    if (!points || points.length < 2) { box.innerHTML = '<div class="empty">No completed trades yet.</div>'; return; }
+    var w = 600, h = 160, pad = 8;
+    var ys = points.map(function (p) { return p.equity; });
+    var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+    if (hi === lo) { hi += 1; lo -= 1; }
+    var step = (w - 2 * pad) / (points.length - 1);
+    var pts = points.map(function (p, i) {
+      return (pad + i * step).toFixed(1) + "," + (h - pad - (p.equity - lo) / (hi - lo) * (h - 2 * pad)).toFixed(1);
+    });
+    var base = h - pad - (ys[0] - lo) / (hi - lo) * (h - 2 * pad);
+    var last = ys[ys.length - 1];
+    box.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-label="Equity curve">' +
+      '<line x1="0" x2="' + w + '" y1="' + base.toFixed(1) + '" y2="' + base.toFixed(1) + '" stroke="currentColor" stroke-opacity=".2" stroke-dasharray="4 4"/>' +
+      '<polyline fill="none" stroke-width="2.5" vector-effect="non-scaling-stroke" style="stroke:var(' + (last >= ys[0] ? "--up" : "--down") + ')" points="' + pts.join(" ") + '"/></svg>' +
+      '<div class="sub">Start ' + money(ys[0]) + ' · now ' + money(last) + ' · low ' + money(lo) + ' · high ' + money(hi) + '</div>';
+  }
+
+  function positions(list) {
+    var box = el("positions");
+    if (!list.length) { box.innerHTML = '<div class="empty">No open positions.</div>'; return; }
+    box.innerHTML = list.map(function (p) {
+      return '<div class="row"><div class="top"><span>' + esc(p.symbol) + '</span><span class="' + cls(p.unrealized_pnl) + '">' + signed(p.unrealized_pnl) + '</span></div>' +
+        '<dl><div><dt>Qty</dt><dd>' + esc(p.qty) + '</dd></div><div><dt>Entry</dt><dd>' + money(p.entry_price) + '</dd></div>' +
+        '<div><dt>Current bid</dt><dd>' + money(p.current_bid) + '</dd></div><div><dt>Stop</dt><dd>' + money(p.stop) + '</dd></div>' +
+        '<div><dt>Target</dt><dd>' + money(p.target) + '</dd></div><div><dt>Opened</dt><dd>' + when(p.entry_time) + '</dd></div></dl>' +
+        '<div class="sub">Price at ' + when(p.price_time) + (p.price_note ? ' · ' + esc(p.price_note) : '') + '</div></div>';
+    }).join("");
+  }
+
+  function trades(list) {
+    var box = el("trades");
+    if (!list.length) { box.innerHTML = '<div class="empty">No completed trades yet.</div>'; return; }
+    box.innerHTML = list.slice(0, 100).map(function (t) {
+      return '<div class="row"><div class="top"><span>' + esc(t.symbol) + '</span><span class="' + cls(t.net_pnl) + '">' + signed(t.net_pnl) + '</span></div>' +
+        '<dl><div><dt>Qty</dt><dd>' + esc(t.qty) + '</dd></div><div><dt>Entry</dt><dd>' + money(t.entry_price) + '</dd></div>' +
+        '<div><dt>Exit</dt><dd>' + money(t.exit_price) + '</dd></div><div><dt>In</dt><dd>' + when(t.entry_time) + '</dd></div>' +
+        '<div><dt>Out</dt><dd>' + when(t.exit_time) + '</dd></div><div><dt>Reason</dt><dd>' + esc(t.exit_reason) + '</dd></div></dl></div>';
+    }).join("");
+  }
+
+  function render(d) {
+    status(d);
+    var t = d.today, T = d.totals;
+    setPnl("day-pnl", t.pnl);
+    el("day-sub").textContent = t.trades + " trade" + (t.trades === 1 ? "" : "s") + " today";
+    setPnl("total-pnl", T.total_pnl);
+    el("total-sub").textContent = "Realised " + signed(T.realized_pnl) + " · open " + signed(T.unrealized_pnl);
+    el("available").textContent = money(T.available_inr);
+    el("capital").textContent = "Virtual capital " + money(d.capital_inr);
+    el("deployed").textContent = money(T.deployed_inr);
+    el("open-count").textContent = d.open_positions.length + " open";
+    var left = t.remaining_loss_inr, lim = d.daily_loss_limit_inr, pct = lim ? Math.max(0, Math.min(100, left / lim * 100)) : 0;
+    el("risk-left").textContent = money(left) + " of " + money(lim);
+    var m = el("risk-meter"); m.className = "meter" + (pct <= 0 ? " out" : pct < 40 ? " low" : ""); m.firstChild.style.width = pct + "%";
+    el("risk-sub").textContent = t.locked ? ("Locked for today: " + (t.lock_reason || "limit reached")) :
+      ("Stop-for-the-day level " + money(d.daily_profit_stop_inr) + " realised profit");
+    el("n-trades").textContent = T.completed_trades;
+    el("win-rate").textContent = T.win_rate_pct === null ? "–" : T.win_rate_pct + "%";
+    el("wins").textContent = T.completed_trades ? T.wins + " won, " + (T.completed_trades - T.wins) + " lost" : "";
+    curve(d.equity_curve);
+    positions(d.open_positions);
+    trades(d.trades);
+    var errs = (d.errors || []).slice();
+    if (d.bot && d.bot.last_error) errs.unshift("Last bot error: " + d.bot.last_error);
+    el("errors").innerHTML = errs.map(function (e) { return '<div class="err">' + esc(e) + '</div>'; }).join("");
+    el("updated").textContent = "Data written by the bot at " + when(d.generated_at) + " IST. Ledger " + d.ledger_integrity + ".";
+  }
+
+  function load() {
+    fetch(src + (src.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status === 404 ? "no data yet: the bot has not saved a paper-trading run" : "HTTP " + r.status); return r.json(); })
+      .then(render)
+      .catch(function (e) {
+        el("status").className = "status Stopped"; el("status-text").textContent = "No data";
+        el("errors").innerHTML = '<div class="err">' + esc("Could not load data (" + e.message + ").") + '</div>';
+      });
+  }
+  load();
+  setInterval(load, 60000);
+})();
+</script>
+</body>
+</html>

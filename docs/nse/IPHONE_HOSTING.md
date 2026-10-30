@@ -76,9 +76,10 @@ which runs every test on each push).
    (SAHI tokens expire at 06:00 IST every day).
 6. To try it at any time: Actions tab → paper-day → Run workflow. On a holiday
    or weekend it stops at once.
-7. Results: the job log (Actions tab) shows the SIMULATED report, and the
-   `paper-state` branch holds the ledger, risk lockout and recordings. I can
-   read and summarise them for you here.
+7. Results: the dashboard at `https://<user>.github.io/<repo>/` (see
+   `DASHBOARD_PLAN.md`), the job log (Actions tab), and the `paper-state`
+   branch (ledger, risk, alerts). The instrument list, recordings and logs are
+   kept in GitHub's private Actions cache, not on the public branch.
 
 How the day runs: one job at 09:05 IST that stops at 12:15, and one at 12:10
 IST that waits for the first to finish and stops after the close. Each job

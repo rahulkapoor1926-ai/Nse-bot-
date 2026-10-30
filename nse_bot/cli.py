@@ -14,6 +14,7 @@
   fetch-history     stock/ETF dataset from SAHI historical candles (estimated spread, no bid/ask)
   risk-status       today's risk state and lockout
   report            read-only performance report (SIMULATED)
+  dashboard         rebuilds state/dashboard/data.json for the web page (read-only)
   news              headlines from your feeds file + upcoming scheduled events
   pelosi            the Pelosi-tracker applicability assessment
 
@@ -28,7 +29,7 @@ import os
 import sys
 import time
 
-from . import (analyst, clock, config, costs as costs_mod, events as events_mod, gate, instruments,
+from . import (analyst, clock, config, costs as costs_mod, dashboard, events as events_mod, gate, instruments,
                news, pelosi, report, risk)
 from .alerts import Alerts
 from .backtest import engine, equity_engine, metrics
@@ -234,22 +235,43 @@ def cmd_paper(a):
     while True:
         now = clock.now_ist()
         if _should_stop(a, cal, now):
+            _dashboard(cfg, now, "stopped", master=m)
             return
         book = risk.RiskBook.open(cfg["state_dir"], now.date())
         al = Alerts(cfg["state_dir"], now.date())
         ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest)
+        err = None
         try:
             res = bot.run_once(ctx, now)
             LOG.info(json.dumps(res, default=str)[:4000])
         except NseBotError as e:
+            err = str(e)
             book.record_error(cfg, now)
             al.emit("system_error", "loop-%s" % now.strftime("%H%M%S"), str(e), now)
+        closing = not cal.status(now)["open"] and now.time() > clock.SESSION_CLOSE
+        _dashboard(cfg, now, "error" if err else "stopped" if (a.once or closing) else "running",
+                   ctx.marks, err, m)
         if a.once:
             return
-        if not cal.status(now)["open"] and now.time() > clock.SESSION_CLOSE:
+        if closing:
             print("session closed; exiting (the supervisor restarts the bot next morning)")
             return
         time.sleep(a.every)
+
+
+def _dashboard(cfg, now, status, marks=None, error=None, master=None):
+    """Heartbeat + dashboard/data.json. Reporting only: a failure here is logged and never stops trading."""
+    try:
+        dashboard.write_heartbeat(cfg["state_dir"], now, status, marks, error, master)
+        dashboard.write(cfg["state_dir"], cfg, now)
+    except Exception as e:                      # noqa: BLE001  (the dashboard must not affect the loop)
+        LOG.error("dashboard update failed: %s", e)
+
+
+def cmd_dashboard(a):
+    cfg = config.load(a.config)
+    doc = dashboard.write(cfg["state_dir"], cfg, _now(a))
+    print(json.dumps({"bot": doc["bot"], "today": doc["today"], "totals": doc["totals"]}, indent=2))
 
 
 def cmd_record(a):
@@ -347,6 +369,7 @@ def build_parser():
     s.set_defaults(fn=cmd_build_dataset)
     sub.add_parser("risk-status").set_defaults(fn=cmd_risk_status)
     sub.add_parser("report").set_defaults(fn=cmd_report)
+    sub.add_parser("dashboard").set_defaults(fn=cmd_dashboard)
     s = sub.add_parser("news"); s.add_argument("--feeds"); s.add_argument("--hours", type=int, default=24)
     s.set_defaults(fn=cmd_news)
     sub.add_parser("pelosi").set_defaults(fn=cmd_pelosi)

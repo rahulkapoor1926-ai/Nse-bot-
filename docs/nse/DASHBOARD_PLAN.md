@@ -1,6 +1,7 @@
 # Paper-trading P&L dashboard: implementation plan
 
-Status: **plan only, waiting for approval.** Nothing is built or deployed.
+Status: **approved 2026-10-30 and built.** Page: `dashboard/index.html`; data: `nse_bot/dashboard.py`;
+published by `.github/workflows/pages.yml`.
 Live orders stay impossible: nothing below touches order code, the gate, risk
 limits, sizing, the strategy or the 11 skills.
 
