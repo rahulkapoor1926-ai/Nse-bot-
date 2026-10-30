@@ -1,0 +1,4 @@
+{
+  "note": "Add RSS/Atom feeds you trust (https only). Copy to config/feeds.json; nothing is fetched unless listed here.",
+  "feeds": []
+}

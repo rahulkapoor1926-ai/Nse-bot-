@@ -1,0 +1,9 @@
+# runtime state, logs, downloaded masters and local configs never go into git
+state/
+*.part
+.env
+.env.*
+config/paper.json
+config/feeds.json
+__pycache__/
+.pytest_cache/

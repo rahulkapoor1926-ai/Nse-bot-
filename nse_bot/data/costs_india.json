@@ -1,0 +1,35 @@
+{
+  "note": "Index-option charges for a SAHI account. Percentages are percent of premium turnover. A trade dated before the earliest schedule is refused, not guessed.",
+  "schedules": [
+    {
+      "effective_from": "2026-04-01",
+      "brokerage_per_order_inr": 10,
+      "stt_sell_pct": 0.15,
+      "exchange_txn_pct": 0.0355299,
+      "sebi_pct": 0.0001,
+      "ipft_pct": 0.0000001,
+      "stamp_buy_pct": 0.003,
+      "gst_pct": 18,
+      "sources": [
+        "https://www.sahi.com/pricing (read 2026-10-30): Rs 10 per order, STT 0.15% sell, NSE 0.0355299%, SEBI 0.0001%, IPFT 0.0000001%, stamp 0.003% buy",
+        "Budget 2026 STT change effective 2026-04-01: https://www.icicidirect.com/ilearn/futures-and-options/articles/stt-changes-in-budget-2026-what-f-o-traders-should-know",
+        "GST 18% on brokerage, exchange, SEBI and IPFT charges (sahi.com/pricing lists what GST applies to; the 18% rate is the standard GST rate on these services)"
+      ]
+    },
+    {
+      "effective_from": "2024-10-01",
+      "brokerage_per_order_inr": 10,
+      "stt_sell_pct": 0.10,
+      "exchange_txn_pct": 0.03503,
+      "sebi_pct": 0.0001,
+      "ipft_pct": 0.0000001,
+      "stamp_buy_pct": 0.003,
+      "gst_pct": 18,
+      "sources": [
+        "STT 0.10% on option premium sell from 2024-10-01 (Finance Act 2024); pre-2026 rate per ICICI Direct article above",
+        "NSE uniform options transaction charge 0.03503% from 2024-10-01 (NSE circular on revised transaction charges, Sept 2024) - UNVERIFIED here, check before relying on pre-2026 backtests",
+        "Brokerage assumed Rs 10/order for this period - UNVERIFIED against SAHI's historical tariff"
+      ]
+    }
+  ]
+}

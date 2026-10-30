@@ -114,7 +114,14 @@ Create only (no upstream file is modified):
 - `nse_bot/data/nse_holidays_2026.json` (from NSE circular 212/2025)
 - `config/paper.example.json`
 - `tests/nse/` one test module per nse_bot module, plus `test_protected.py`
-- `pytest.ini` scoped to `tests/nse` is **not** added, so upstream discovery stays as it was
+
+**Layout change during Stage D.** Upstream `tests/test_repo.py` asserts that its
+root folder holds nothing but the 11 skills, `tests`, `README.md`, `LICENSE`
+and `.claude-plugin`, so any new top-level folder would fail an upstream test.
+The upstream tree was therefore moved, byte-for-byte, into `upstream/` (git
+records it as a rename), and the NSE project lives beside it. The 85 protected
+files are still hash-checked by `tests/test_protected.py`, and the upstream
+suite runs unchanged with `cd upstream && python3 -m unittest discover -s tests`.
 
 Stage C adds `nse_bot/data/store.py`, `nse_bot/backtest/*`, `nse_bot/gate.py`;
 Stage D adds `report.py` and safety tests; Stage E adds `nse_bot/broker/sahi.py`;

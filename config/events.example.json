@@ -1,0 +1,4 @@
+{
+  "note": "Scheduled events that can move NIFTY/BANKNIFTY. Each needs an IST time, an impact level and a source link; events without a source are rejected. Fill from official calendars (RBI, MoSPI, Union Budget). This example is intentionally empty.",
+  "events": []
+}

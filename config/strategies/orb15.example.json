@@ -1,0 +1,11 @@
+{
+  "name": "orb15-atm",
+  "pattern": "orb",
+  "params": {"or_minutes": 15, "buffer_pct": 0.05},
+  "interval_minutes": 5,
+  "strike_offset": 0,
+  "stop_pct": 20,
+  "target_r": 2,
+  "entry_delay_bars": 1,
+  "max_signals_per_day": 1
+}
