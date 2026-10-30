@@ -2,8 +2,14 @@
   "mode": "paper",
   "timezone": "Asia/Kolkata",
   "currency": "INR",
-  "underlyings": ["NIFTY", "BANKNIFTY"],
-  "index_names": {"NIFTY": "Nifty 50", "BANKNIFTY": "Nifty Bank"},
+  "underlyings": [
+    "NIFTY",
+    "BANKNIFTY"
+  ],
+  "index_names": {
+    "NIFTY": "Nifty 50",
+    "BANKNIFTY": "Nifty Bank"
+  },
   "capital_inr": 20000,
   "max_daily_loss_inr": 500,
   "daily_profit_stop_inr": 2000,
@@ -32,5 +38,16 @@
   "holidays_file": "nse_bot/data/nse_holidays.json",
   "costs_file": "nse_bot/data/costs_india.json",
   "events_file": "config/events.example.json",
+  "instruments_enabled": [
+    "equity",
+    "etf",
+    "index_options"
+  ],
+  "equity_universe_file": "config/universe.example.json",
+  "equity_product": "intraday",
+  "equity_min_price_inr": 50,
+  "equity_min_top_value_inr": 200000,
+  "equity_min_volume_today": 200000,
+  "gate_allow_estimated_spread": true,
   "live_orders_enabled": false
 }

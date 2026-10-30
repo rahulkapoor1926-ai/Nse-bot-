@@ -75,6 +75,11 @@ class Cli(unittest.TestCase):
             json.dump(synth.STRATEGY, open(sp, "w"))
             rc, _, err = run(["--config", self.cfgpath, "paper", "--master", master, "--strategy", sp, "--once"])
             self.assertEqual(rc, 2)
+            self.assertIn("universe symbols not found", err)        # unknown stocks refused before anything
+            json.dump(synth.cfg(os.path.join(self.dir, "state"), instruments_enabled=["index_options"]),
+                      open(self.cfgpath, "w"))
+            rc, _, err = run(["--config", self.cfgpath, "paper", "--master", master, "--strategy", sp, "--once"])
+            self.assertEqual(rc, 2)
             self.assertIn("SAHI_KEY_ID", err)
         finally:
             os.environ.update(env)

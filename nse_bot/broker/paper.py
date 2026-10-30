@@ -3,7 +3,7 @@
 Fill rules (no mid-price fills):
   BUY  at the ask + slippage_ticks * tick, at most the displayed ask quantity
   SELL at the bid - slippage_ticks * tick, at most the displayed bid quantity
-Quantities are whole lots. A partial fill leaves the rest unfilled (entry) or
+Quantities are whole lots (one share for stocks and ETFs). A partial fill leaves the rest unfilled (entry) or
 still open (exit). A missing or unusable quote is a FAILED order: an exit that
 failed leaves the position open and says so. Charges come from CostModel.
 
@@ -86,7 +86,7 @@ class PaperBroker(object):
                             "side": side, "instrument_id": iid, "reason": reason, "meta": meta or {}})
         return {"status": "FAILED", "reason": reason, "filled_qty": 0}
 
-    def _fill(self, side, iid, want_qty, lot, tick, quote, now, meta):
+    def _fill(self, side, iid, want_qty, lot, tick, quote, now, meta, segment="index_options"):
         if quote is None:
             return self._fail(now, side, iid, "no quote (network or feed failure)", meta)
         px = quote.ask if side == "BUY" else quote.bid
@@ -100,8 +100,9 @@ class PaperBroker(object):
         qty = min(want_qty, (avail // lot) * lot)
         if qty <= 0:
             return self._fail(now, side, iid, "displayed size %s below one lot (%d)" % (avail, lot), meta)
-        ch = self.costs.leg(side, fill_px, qty, clock.to_ist(now).date())
+        ch = self.costs.leg(side, fill_px, qty, clock.to_ist(now).date(), segment)
         rec = self.ledger.append({"event": "fill", "time": clock.to_ist(now).isoformat(), "side": side,
+                                  "segment": segment,
                                   "instrument_id": iid, "qty": qty, "price": fill_px,
                                   "quote_bid": quote.bid, "quote_ask": quote.ask,
                                   "charges": ch, "meta": meta or {}})
@@ -110,11 +111,11 @@ class PaperBroker(object):
 
     def buy(self, contract, lots, quote, now, meta=None):
         return self._fill("BUY", contract.instrument_id, lots * contract.lot_size, contract.lot_size,
-                          contract.tick_size, quote, now, meta)
+                          contract.tick_size, quote, now, meta, contract.cost_segment)
 
     def sell(self, contract, qty, quote, now, meta=None):
         held = self.ledger.positions().get(str(contract.instrument_id), {}).get("qty", 0)
         if qty > held:
             return self._fail(now, "SELL", contract.instrument_id, "sell %d exceeds held %d" % (qty, held), meta)
         return self._fill("SELL", contract.instrument_id, qty, contract.lot_size, contract.tick_size,
-                          quote, now, meta)
+                          quote, now, meta, contract.cost_segment)

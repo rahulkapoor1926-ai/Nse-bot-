@@ -15,6 +15,7 @@ import datetime as dt
 from .errors import DataError
 
 PATTERNS = ("orb", "pdh_pdl")
+INSTRUMENTS = ("index_option", "equity")
 
 
 def closed_bars(bars, now, minutes):
@@ -106,11 +107,13 @@ def detect(strategy, bars, minutes, prev_high=None, prev_low=None, start=0):
 
 
 def validate_strategy(s):
-    need = ("name", "pattern", "params", "interval_minutes", "strike_offset",
+    need = ("name", "instrument", "pattern", "params", "interval_minutes", "strike_offset",
             "stop_pct", "target_r")
     miss = [k for k in need if k not in s]
     if miss:
         raise DataError("strategy is missing %s" % ", ".join(miss))
+    if s["instrument"] not in INSTRUMENTS:
+        raise DataError("strategy instrument must be one of %s" % ", ".join(INSTRUMENTS))
     if s["pattern"] not in PATTERNS:
         raise DataError("unknown pattern %r" % s["pattern"])
     if s["interval_minutes"] not in (1, 3, 5, 15, 30):

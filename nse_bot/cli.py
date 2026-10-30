@@ -6,10 +6,12 @@
   costs             charges for one round trip
   backtest          run a strategy over a dataset (SIMULATED)
   gate              run the 10,000-example validation gate
-  paper             paper-trading loop on read-only SAHI data (needs SAHI_KEY_ID/SAHI_KEY_SECRET)
+  paper             paper-trading loop on read-only SAHI data (needs SAHI_KEY_ID/SAHI_KEY_SECRET);
+                    --strategy may repeat (e.g. a stock strategy, then an index-option one)
   sahi-check        verify the read-only SAHI connection without trading
   record            record index/option bars with bid/ask snapshots from SAHI (builds real history)
-  build-dataset     combine recorded sessions into a dataset with a manifest
+  build-dataset     combine recorded sessions into a dataset with a manifest (--kind options|equity)
+  fetch-history     stock/ETF dataset from SAHI historical candles (estimated spread, no bid/ask)
   risk-status       today's risk state and lockout
   report            read-only performance report (SIMULATED)
   news              headlines from your feeds file + upcoming scheduled events
@@ -29,9 +31,9 @@ import time
 from . import (analyst, clock, config, costs as costs_mod, events as events_mod, gate, instruments,
                news, pelosi, report, risk)
 from .alerts import Alerts
-from .backtest import engine, metrics
+from .backtest import engine, equity_engine, metrics
 from .data import store
-from .errors import NseBotError
+from .errors import ConfigError, NseBotError
 
 LOG = logging.getLogger("nse_bot")
 
@@ -100,12 +102,24 @@ def cmd_costs(a):
     print(json.dumps(cm.round_trip(a.buy, a.sell, a.qty, day), indent=2))
 
 
+def _load_ds(path):
+    """Option or stock/ETF dataset, chosen by the manifest's kind."""
+    try:
+        with open(os.path.join(path, "manifest.json"), encoding="utf-8") as f:
+            kind = json.load(f).get("kind")
+    except (OSError, ValueError):
+        kind = None
+    return store.load_equity(path) if kind == "equity" else store.load(path)
+
+
 def cmd_backtest(a):
     cfg, cal, cm = _common(a.config)
-    ds = store.load(a.dataset)
+    ds = _load_ds(a.dataset)
     strat = _strategy(a.strategy)
-    r = engine.run(ds, strat, cfg, cm, cal)
-    out = {"label": report.BANNER, "synthetic_data": ds.synthetic, "counts": r["counts"],
+    eng = equity_engine if strat.get("instrument") == "equity" else engine
+    r = eng.run(ds, strat, cfg, cm, cal)
+    out = {"label": report.BANNER, "synthetic_data": ds.synthetic,
+           "fill_model": getattr(ds, "fill_model", "quotes"), "counts": r["counts"],
            "invalid": r["invalid"], "unresolved": r["unresolved"], "metrics": metrics.compute(r["trades"]),
            "by_underlying": metrics.by(r["trades"], "underlying"), "by_regime": metrics.by(r["trades"], "regime"),
            "note": "Whole-dataset run for exploration. Use `gate` for train/validation/test evaluation."}
@@ -114,7 +128,7 @@ def cmd_backtest(a):
 
 def cmd_gate(a):
     cfg, cal, cm = _common(a.config)
-    ds = store.load(a.dataset)
+    ds = _load_ds(a.dataset)
     doc = gate.evaluate(ds, _strategy(a.strategy), cfg, cm, cal, cfg["state_dir"])
     print(json.dumps(doc, indent=2, default=str))
     return 0 if doc["status"] == "APPROVED" else 2
@@ -157,6 +171,8 @@ def _sahi_ctx(a):
         n = sahi.download_scrip_master(a.master)
         LOG.info("scrip master downloaded: %d bytes", n)
     m = instruments.load(a.master, cfg["underlyings"], list(cfg["index_names"].values()))
+    if {"equity", "etf"} & set(cfg["instruments_enabled"]):
+        m.bind_universe(instruments.load_universe(cfg["equity_universe_file"]))
     md = sahi.SahiReadOnly()
     return cfg, cal, cm, m, md
 
@@ -175,6 +191,11 @@ def cmd_sahi_check(a):
             print("  sample %s: bid %s ask %s ts %s problems %s" % (
                 c.symbol, q and q.bid, q and q.ask, q and q.ts,
                 q and __import__("nse_bot.quotes", fromlist=["check"]).check(q, _now(a), cfg, c.lot_size)))
+    from .quotes import check_for
+    for st in list(m.stocks.values())[:3]:
+        q = md.quotes([st.instrument_id]).get(st.instrument_id)
+        print("  %s id %d: bid %s ask %s problems %s" % (st.symbol, st.instrument_id, q and q.bid, q and q.ask,
+                                                         q and check_for(st, q, _now(a), cfg)))
     print("read-only connection verified from this machine")
 
 
@@ -182,9 +203,12 @@ def cmd_paper(a):
     from . import bot
     from .broker.paper import PaperBroker
     cfg, cal, cm, m, md = _sahi_ctx(a)
-    strat = _strategy(a.strategy)
+    strats = [_strategy(p) for p in a.strategy]
     evs = events_mod.load(cfg["events_file"])
-    digest = store.load(a.dataset).digest if a.dataset else None
+    datasets = a.dataset or []
+    if datasets and len(datasets) != len(strats):
+        raise ConfigError("give one --dataset per --strategy (same order), or none")
+    digest = {s["name"]: _load_ds(d).digest for s, d in zip(strats, datasets)} or None
     broker = PaperBroker(cfg["state_dir"], cm, cfg["slippage_ticks"])
     broker.ledger.verify()
     print(report.BANNER)
@@ -192,7 +216,7 @@ def cmd_paper(a):
         now = clock.now_ist()
         book = risk.RiskBook.open(cfg["state_dir"], now.date())
         al = Alerts(cfg["state_dir"], now.date())
-        ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strat, evs, digest)
+        ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest)
         try:
             res = bot.run_once(ctx, now)
             LOG.info(json.dumps(res, default=str)[:4000])
@@ -238,8 +262,20 @@ def cmd_record(a):
 
 def cmd_build_dataset(a):
     from .data import recorder
-    doc = recorder.build(a.recordings, a.out, a.name, a.interval)
+    fn = recorder.build_equity if a.kind == "equity" else recorder.build
+    doc = fn(a.recordings, a.out, a.name, a.interval)
     print(json.dumps(doc, indent=2))
+
+
+def cmd_fetch_history(a):
+    from .data import history
+    cfg, cal, cm, m, md = _sahi_ctx(a)
+    if not m.stocks:
+        raise ConfigError("no stocks/ETFs enabled: check instruments_enabled and the universe file")
+    res = history.fetch_equity_history(md, m.stocks.values(), cal, dt.date.fromisoformat(a.start),
+                                       dt.date.fromisoformat(a.end), a.interval, a.out, a.spread_pct)
+    print(json.dumps(res, indent=2))
+    return 2 if res["errors"] else 0
 
 
 def build_parser():
@@ -257,15 +293,22 @@ def build_parser():
     for name, fn in (("backtest", cmd_backtest), ("gate", cmd_gate)):
         s = sub.add_parser(name); s.add_argument("--dataset", required=True)
         s.add_argument("--strategy", required=True); s.set_defaults(fn=fn)
-    for name, fn in (("paper", cmd_paper), ("sahi-check", cmd_sahi_check), ("record", cmd_record)):
+    for name, fn in (("paper", cmd_paper), ("sahi-check", cmd_sahi_check), ("record", cmd_record),
+                     ("fetch-history", cmd_fetch_history)):
         s = sub.add_parser(name)
         s.add_argument("--master", default="state/instruments.csv")
         s.add_argument("--refresh-master", action="store_true")
         if name == "paper":
-            s.add_argument("--strategy", required=True)
-            s.add_argument("--dataset", help="dataset the gate approved the strategy on")
+            s.add_argument("--strategy", required=True, action="append",
+                           help="repeat to run several strategies; tried in the order given")
+            s.add_argument("--dataset", action="append", help="dataset each strategy was approved on, same order")
             s.add_argument("--every", type=int, default=15)
             s.add_argument("--once", action="store_true")
+        if name == "fetch-history":
+            s.add_argument("--start", required=True); s.add_argument("--end", required=True)
+            s.add_argument("--interval", type=int, default=5); s.add_argument("--out", required=True)
+            s.add_argument("--spread-pct", type=float, default=0.10,
+                           help="assumed full bid/ask spread in percent (minimum 0.05)")
         if name == "record":
             s.add_argument("--out", default="state/recordings")
             s.add_argument("--interval", type=int, default=5)
@@ -275,6 +318,7 @@ def build_parser():
     s = sub.add_parser("build-dataset")
     s.add_argument("--recordings", default="state/recordings"); s.add_argument("--out", required=True)
     s.add_argument("--name", required=True); s.add_argument("--interval", type=int, default=5)
+    s.add_argument("--kind", choices=("options", "equity"), default="options")
     s.set_defaults(fn=cmd_build_dataset)
     sub.add_parser("risk-status").set_defaults(fn=cmd_risk_status)
     sub.add_parser("report").set_defaults(fn=cmd_report)

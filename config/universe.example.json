@@ -1,0 +1,17 @@
+{
+  "note": "Stocks and ETFs the equity scanner may trade. kind is declared here because the scrip master does not reliably mark ETFs. Every symbol must exist in the SAHI scrip master as an NSE cash instrument; unknown symbols are refused, not guessed. Example list of liquid names only: review it yourself.",
+  "symbols": [
+    {"symbol": "RELIANCE", "kind": "equity"},
+    {"symbol": "HDFCBANK", "kind": "equity"},
+    {"symbol": "ICICIBANK", "kind": "equity"},
+    {"symbol": "INFY", "kind": "equity"},
+    {"symbol": "TCS", "kind": "equity"},
+    {"symbol": "SBIN", "kind": "equity"},
+    {"symbol": "AXISBANK", "kind": "equity"},
+    {"symbol": "KOTAKBANK", "kind": "equity"},
+    {"symbol": "LT", "kind": "equity"},
+    {"symbol": "ITC", "kind": "equity"},
+    {"symbol": "NIFTYBEES", "kind": "etf"},
+    {"symbol": "BANKBEES", "kind": "etf"}
+  ]
+}

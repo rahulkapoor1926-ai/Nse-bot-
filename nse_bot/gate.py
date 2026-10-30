@@ -2,6 +2,7 @@
 
 Order of checks (the first that fails decides):
   1. synthetic dataset                         -> REJECTED (unless a test passes allow_synthetic)
+     stock/ETF dataset without bid/ask history  -> INSUFFICIENT DATA unless gate_allow_estimated_spread
   2. valid independent examples < gate_min_examples (>= 10,000)  -> INSUFFICIENT DATA
   3. unresolved trades > 1% of valid examples  -> REJECTED (data quality)
   4. out-of-sample executed trades < gate_min_oos_trades -> INSUFFICIENT DATA
@@ -23,7 +24,7 @@ import json
 import os
 
 from . import state
-from .backtest import engine, metrics
+from .backtest import engine as option_engine, equity_engine, metrics
 
 MAX_TEST_STRATEGIES = 3
 MAX_UNRESOLVED_FRACTION = 0.01
@@ -87,6 +88,17 @@ def evaluate(ds, strategy, cfg, costs, cal, state_dir, allow_synthetic=False):
 
     if ds.synthetic and not allow_synthetic:
         return done("REJECTED", "dataset is marked synthetic; synthetic data can never approve a signal")
+    engine = equity_engine if strategy["instrument"] == "equity" else option_engine
+    is_equity_ds = hasattr(ds, "fill_model")
+    if is_equity_ds != (engine is equity_engine):
+        return done("REJECTED", "strategy instrument %s does not match the dataset type" % strategy["instrument"])
+    if is_equity_ds:
+        doc["fill_model"] = ds.fill_model
+        if ds.fill_model == "estimated_spread":
+            doc["fill_model"] += " (%.2f%% assumed spread, no recorded bid/ask)" % ds.spread_pct
+            if not cfg["gate_allow_estimated_spread"]:
+                return done("INSUFFICIENT DATA", "no historical bid/ask in this dataset and "
+                            "gate_allow_estimated_spread is false")
 
     days = engine.all_days(ds, cfg["underlyings"])
     full = engine.run(ds, strategy, cfg, costs, cal)
@@ -127,7 +139,7 @@ def evaluate(ds, strategy, cfg, costs, cal, state_dir, allow_synthetic=False):
     doc["test_by_regime"] = metrics.by(test["trades"], "regime")
     doc["test_by_underlying"] = metrics.by(test["trades"], "underlying")
     doc["baseline_test"] = metrics.compute(base["trades"])
-    doc["baseline"] = "same signal times and strike rule, direction by a seeded coin flip"
+    doc["baseline"] = getattr(engine, "BASELINE", "same signal times and strike rule, direction by a seeded coin flip")
     doc["test_period_strategies_evaluated"] = reuse
 
     if test["counts"].get("executed", 0) < cfg["gate_min_oos_trades"]:
@@ -143,7 +155,7 @@ def evaluate(ds, strategy, cfg, costs, cal, state_dir, allow_synthetic=False):
     if lo is None or lo <= 0:
         return done("REJECTED", "out-of-sample expectancy 95%% CI lower bound %s is not above zero" % lo)
     if doc["test"]["expectancy"] <= doc["baseline_test"].get("expectancy", float("-inf")):
-        return done("REJECTED", "out-of-sample expectancy does not beat the coin-flip baseline")
+        return done("REJECTED", "out-of-sample expectancy does not beat the baseline")
     if reuse > MAX_TEST_STRATEGIES:
         return done("REJECTED", "the test period has been used to evaluate %d strategies; it is no longer "
                     "untouched. Collect a fresh out-of-sample period." % reuse)

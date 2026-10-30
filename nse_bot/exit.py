@@ -39,9 +39,9 @@ def plan(entry_price, contract, strategy, cfg, day):
         "entry": entry_price, "stop": stop, "target": target,
         "risk_points": round(risk_pts, 2), "reward_points": round(target - entry_price, 2),
         "reward_risk": round((target - entry_price) / risk_pts, 3),
-        "flat_by": flat, "expiry": contract.expiry.isoformat(),
-        "note": "stop and target are on the option premium, judged on the bid; "
-                "a gap or fast market can fill below the stop",
+        "flat_by": flat, "expiry": contract.expiry.isoformat() if contract.expiry else None,
+        "note": "stop and target are on the %s, judged on the bid; a gap or fast market can fill "
+                "below the stop" % ("option premium" if contract.expiry else "share price"),
     }
 
 

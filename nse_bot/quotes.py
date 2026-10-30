@@ -5,6 +5,7 @@ problems; callers refuse to trade (or to mark a position) on anything else.
 """
 
 import datetime as dt
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -72,7 +73,7 @@ def from_sahi(iid, d, source="sahi"):
     )
 
 
-def check(q, now, cfg, lot_size, received_at=None):
+def check(q, now, cfg, lot_size, received_at=None, min_qty=None, need_oi=True, min_volume=None):
     """Return a list of problems; empty means usable for entry decisions.
 
     received_at: when our process received the quote. Staleness uses the later of the
@@ -105,14 +106,15 @@ def check(q, now, cfg, lot_size, received_at=None):
     sp = q.spread_pct()
     if sp is not None and sp > cfg["max_spread_pct"]:
         p.append("spread %.2f%% wider than %.2f%%" % (sp, cfg["max_spread_pct"]))
-    need = cfg["min_top_qty_lots"] * lot_size
+    need = cfg["min_top_qty_lots"] * lot_size if min_qty is None else min_qty
     if q.bid_qty is None or q.bid_qty < need:
         p.append("thin bid: %s units < %d" % (q.bid_qty, need))
     if q.ask_qty is None or q.ask_qty < need:
         p.append("thin ask: %s units < %d" % (q.ask_qty, need))
-    if q.volume is None or q.volume < cfg["min_volume_today"]:
-        p.append("volume today %s < %d" % (q.volume, cfg["min_volume_today"]))
-    if q.oi is None or q.oi < cfg["min_open_interest"]:
+    vol_need = cfg["min_volume_today"] if min_volume is None else min_volume
+    if q.volume is None or q.volume < vol_need:
+        p.append("volume today %s < %d" % (q.volume, vol_need))
+    if need_oi and (q.oi is None or q.oi < cfg["min_open_interest"]):
         p.append("open interest %s < %d" % (q.oi, cfg["min_open_interest"]))
     if q.ltp is not None and q.dpr_low is not None and q.dpr_high is not None:
         if not q.dpr_low <= q.ltp <= q.dpr_high:
@@ -134,3 +136,16 @@ def usable_for_exit(q, now, cfg):
         if age > cfg["max_quote_age_seconds"]:
             p.append("stale: %.0fs old" % age)
     return (None if p else q.bid), p
+
+
+def check_for(instr, q, now, cfg, received_at=None):
+    """check() with the right liquidity rules for an option contract or a stock/ETF."""
+    if getattr(instr, "kind", "index_options") == "index_options":
+        return check(q, now, cfg, instr.lot_size, received_at)
+    p = []
+    if q is not None and q.ask is not None and q.ask < cfg["equity_min_price_inr"]:
+        p.append("price %.2f below equity_min_price_inr %s" % (q.ask, cfg["equity_min_price_inr"]))
+    ref = (q.ask if q is not None and q.ask else None) or 1.0
+    min_qty = int(math.ceil(cfg["equity_min_top_value_inr"] / ref))
+    return p + check(q, now, cfg, 1, received_at, min_qty=min_qty, need_oi=False,
+                     min_volume=cfg["equity_min_volume_today"])

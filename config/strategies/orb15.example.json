@@ -1,5 +1,6 @@
 {
   "name": "orb15-atm",
+  "instrument": "index_option",
   "pattern": "orb",
   "params": {"or_minutes": 15, "buffer_pct": 0.05},
   "interval_minutes": 5,

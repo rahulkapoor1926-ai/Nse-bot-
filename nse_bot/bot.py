@@ -1,5 +1,13 @@
 """One paper-trading cycle: manage open positions, then look for one new entry.
 
+Several strategies can run in one process (one risk book, one ledger), for
+example an equity/ETF strategy and an index-option strategy. They are tried in
+the order given; with max_open_positions = 1 the first entry that passes every
+check is the only one taken. Index options are therefore used only when an
+option trade is suitable on its own terms: at least one lot fits the risk and
+outlay budget, the quote passes the liquidity checks, and the option strategy
+itself passed the validation gate.
+
 run_once() is called by the CLI loop every few seconds. Every step that can
 fail is caught, alerted and counted toward the consecutive-error lockout; a
 failure never turns into "position closed" or "price = 0".
@@ -17,25 +25,48 @@ class Context(object):
     def __init__(self, cfg, cal, master, md, costs, broker, risk, alerts, strategy, events=(),
                  dataset_digest=None):
         self.cfg, self.cal, self.master, self.md, self.costs = cfg, cal, master, md, costs
-        self.broker, self.risk, self.alerts, self.strategy = broker, risk, alerts, strategy
-        self.events, self.dataset_digest = list(events), dataset_digest
+        self.broker, self.risk, self.alerts = broker, risk, alerts
+        self.strategies = list(strategy) if isinstance(strategy, (list, tuple)) else [strategy]
+        self.strategy = self.strategies[0]
+        self.events = list(events)
+        # {strategy name: digest} or one digest for every strategy
+        self.dataset_digest = dataset_digest
 
 
-def _underlying_bars(ctx, now):
-    """Today's bars per index, the last close, and the previous session's high/low."""
+def enabled(ctx, strategy):
+    kinds = ctx.cfg["instruments_enabled"]
+    if strategy["instrument"] == "index_option":
+        return "index_options" in kinds
+    return "equity" in kinds or "etf" in kinds
+
+
+def series_for(ctx, strategy):
+    """[(key, instrument_id)] whose bars the strategy's pattern runs on."""
+    if strategy["instrument"] == "index_option":
+        return [(u, ctx.master.index_id(ctx.cfg["index_names"][u])) for u in ctx.cfg["underlyings"]]
+    kinds = ctx.cfg["instruments_enabled"]
+    return [(s.symbol, s.instrument_id) for s in ctx.master.stocks.values() if s.kind in kinds]
+
+
+def _bars(ctx, now, strategy):
+    """Today's bars per series, the last close, and the previous session's high/low."""
     out, last, prev = {}, {}, {}
     day = now.date()
     pday = ctx.cal.previous_trading_day(day)
-    for u in ctx.cfg["underlyings"]:
-        iid = ctx.master.index_id(ctx.cfg["index_names"][u])
-        rows = ctx.md.candles(iid, "%dm" % ctx.strategy["interval_minutes"], clock.at(pday, "09:15"), now)
-        out[u] = [r[:5] for r in rows if r[0].date() == day]
+    for key, iid in series_for(ctx, strategy):
+        rows = ctx.md.candles(iid, "%dm" % strategy["interval_minutes"], clock.at(pday, "09:15"), now)
+        out[key] = [r[:5] for r in rows if r[0].date() == day]
         before = [r for r in rows if r[0].date() == pday]
         if before:
-            prev[u] = (max(r[2] for r in before), min(r[3] for r in before))
-        if out[u]:
-            last[u] = out[u][-1][4]
+            prev[key] = (max(r[2] for r in before), min(r[3] for r in before))
+        if out[key]:
+            last[key] = out[key][-1][4]
     return out, last, prev
+
+
+def _digest(ctx, strategy):
+    d = ctx.dataset_digest
+    return d.get(strategy["name"]) if isinstance(d, dict) else d
 
 
 def manage_positions(ctx, now, ulast):
@@ -66,7 +97,7 @@ def manage_positions(ctx, now, ulast):
             continue
         bid = decision["price"]
         avg = p["cost"] / p["qty"]
-        est_exit = ctx.costs.leg("SELL", bid, p["qty"], now.date())["total"]
+        est_exit = ctx.costs.leg("SELL", bid, p["qty"], now.date(), c.cost_segment)["total"]
         ctx.risk.mark((bid - avg) * p["qty"] - p["charges"] - est_exit, ctx.cfg, now)
         if decision["action"] != "EXIT":
             continue
@@ -92,10 +123,14 @@ def manage_positions(ctx, now, ulast):
     return events
 
 
-def look_for_entry(ctx, now, ubars, prev=None):
+def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
     prev = prev or {}
-    rows = scanner.scan(ubars, prev, ctx.master, ctx.cal, now, ctx.cfg, ctx.strategy)
-    gstatus = gate.status_for(ctx.cfg["state_dir"], ctx.strategy, ctx.dataset_digest)
+    strategy = strategy or ctx.strategy
+    if strategy["instrument"] == "index_option":
+        rows = scanner.scan(ubars, prev, ctx.master, ctx.cal, now, ctx.cfg, strategy)
+    else:
+        rows = scanner.scan_equities(ubars, prev, ctx.master, now, ctx.cfg, strategy)
+    gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy))
     out = []
     for row in rows:
         if row["status"] != "SIGNAL":
@@ -118,19 +153,19 @@ def look_for_entry(ctx, now, ubars, prev=None):
         if cand["status"] != "CANDIDATE":
             out.append(cand)
             continue
-        plan = exit_mod.plan(cand["entry_price"], c, ctx.strategy, ctx.cfg, now.date())
+        plan = exit_mod.plan(cand["entry_price"], c, strategy, ctx.cfg, now.date())
         sizing = budget.size(cand["entry_price"], plan["stop"], c, ctx.cfg, ctx.costs, now.date(),
                              ctx.risk.remaining_loss(ctx.cfg))
-        order = {"instrument_id": c.instrument_id, "strategy": ctx.strategy["name"],
+        order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
                  "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY"}
         verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus,
-                                 quotes.check(q, now, ctx.cfg, c.lot_size), sizing, plan)
+                                 quotes.check_for(c, q, now, ctx.cfg), sizing, plan)
         cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
         out.append(cand)
         if verdict["verdict"] != "PASS":
             continue
         res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
-            "plan": plan, "strategy": ctx.strategy["name"], "signal_known_at": order["signal_known_at"],
+            "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
             "invalidate_below": row["signal"]["invalidate_below"],
             "invalidate_above": row["signal"]["invalidate_above"]})
         cand["fill"] = res
@@ -140,6 +175,7 @@ def look_for_entry(ctx, now, ubars, prev=None):
         ctx.risk.record_entry(order, now)
         ctx.alerts.emit("price", "filled-" + key, "PAPER bought %d %s @ %.2f; stop %.2f target %.2f" % (
             res["filled_qty"], c.symbol, res["price"], plan["stop"], plan["target"]), now)
+        out.append({"entered": True})
         break                                   # at most one new entry per cycle
     return out
 
@@ -149,14 +185,27 @@ def run_once(ctx, now):
     st = ctx.cal.status(now)
     if not st["open"]:
         return {"market": st, "actions": []}
-    try:
-        ubars, ulast, prev = _underlying_bars(ctx, now)
-        ctx.risk.record_ok()
-    except NseBotError as e:
-        ctx.risk.record_error(ctx.cfg, now)
-        ctx.alerts.emit("system_error", "bars-%s" % now.strftime("%H%M"), "underlying data failed: %s" % e, now)
-        ubars, ulast, prev = None, {}, {}
-    managed = manage_positions(ctx, now, ulast)
-    if ctx.risk.locked or ubars is None:
+    series, last = [], {}
+    for strat in ctx.strategies:
+        if not enabled(ctx, strat):
+            continue
+        try:
+            b, l, p = _bars(ctx, now, strat)
+            ctx.risk.record_ok()
+            series.append((strat, b, p))
+            last.update(l)
+        except NseBotError as e:
+            ctx.risk.record_error(ctx.cfg, now)
+            ctx.alerts.emit("system_error", "bars-%s-%s" % (strat["name"], now.strftime("%H%M")),
+                            "market data failed for %s: %s" % (strat["name"], e), now)
+    managed = manage_positions(ctx, now, last)
+    if ctx.risk.locked or not series:
         return {"market": st, "managed": managed, "locked": ctx.risk.locked}
-    return {"market": st, "managed": managed, "candidates": look_for_entry(ctx, now, ubars, prev)}
+    cands = []
+    for strat, b, p in series:
+        got = look_for_entry(ctx, now, b, p, strat)
+        entered = any(x.get("entered") for x in got)
+        cands.extend(x for x in got if not x.get("entered"))
+        if entered or ctx.risk.locked:
+            break
+    return {"market": st, "managed": managed, "candidates": cands}

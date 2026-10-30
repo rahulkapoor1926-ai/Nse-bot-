@@ -185,3 +185,109 @@ def write_manifest(folder, name, source, synthetic, interval_minutes):
     with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=2, sort_keys=True)
     return doc
+
+
+# ---------------------------------------------------------------------------
+# Stocks and ETFs
+#
+# Folder with manifest.json {"name", "source", "synthetic", "interval_minutes",
+# "kind": "equity", "fill_model": "quotes" | "estimated_spread",
+# "estimated_spread_pct" (only for estimated_spread), "files": {"equities.csv": sha}}
+# equities.csv: ts,symbol,kind,open,high,low,close,volume,bid,ask,bid_qty,ask_qty,tick_size
+# With fill_model "quotes" bid/ask are the snapshot at the bar close (empty = unknown).
+# With "estimated_spread" bid/ask are absent and fills use close -/+ half the spread,
+# which the gate accepts only when the config allows it.
+
+E_COLS = ("ts", "symbol", "kind", "open", "high", "low", "close", "volume", "bid", "ask",
+          "bid_qty", "ask_qty", "tick_size")
+FILL_MODELS = ("quotes", "estimated_spread")
+MIN_ESTIMATED_SPREAD_PCT = 0.05
+
+
+class EquityDataset(object):
+    def __init__(self, manifest, bars, kinds, rejected, digest):
+        self.manifest = manifest
+        self.synthetic = bool(manifest.get("synthetic"))
+        self.interval = int(manifest["interval_minutes"])
+        self.fill_model = manifest["fill_model"]
+        self.spread_pct = manifest.get("estimated_spread_pct")
+        self.bars = bars            # {symbol: {day: [row dicts sorted by ts]}}
+        self.kinds = kinds          # {symbol: "equity" | "etf"}
+        self.rejected = rejected
+        self.digest = digest
+
+    def symbols(self):
+        return sorted(self.bars)
+
+    def candle_count(self):
+        return sum(len(b) for d in self.bars.values() for b in d.values())
+
+
+def load_equity(folder):
+    mpath = os.path.join(folder, "manifest.json")
+    try:
+        with open(mpath, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (OSError, ValueError) as e:
+        raise DataError("dataset %s has no readable manifest.json: %s" % (folder, e))
+    for k in ("name", "source", "synthetic", "interval_minutes", "files", "fill_model"):
+        if k not in manifest:
+            raise DataError("manifest is missing %s" % k)
+    if manifest.get("kind") != "equity":
+        raise DataError("manifest kind must be 'equity' for a stock/ETF dataset")
+    if manifest["fill_model"] not in FILL_MODELS:
+        raise DataError("fill_model must be one of %s" % ", ".join(FILL_MODELS))
+    if manifest["fill_model"] == "estimated_spread":
+        sp = manifest.get("estimated_spread_pct")
+        if not isinstance(sp, (int, float)) or sp < MIN_ESTIMATED_SPREAD_PCT:
+            raise DataError("estimated_spread_pct must be at least %.2f%%" % MIN_ESTIMATED_SPREAD_PCT)
+    path = os.path.join(folder, "equities.csv")
+    want = manifest["files"].get("equities.csv")
+    if not want or not os.path.exists(path):
+        raise DataError("dataset needs equities.csv listed in the manifest")
+    if sha256_file(path) != want:
+        raise DataError("equities.csv does not match its manifest hash: file changed or corrupt")
+    minutes = int(manifest["interval_minutes"])
+    rejected = defaultdict(int)
+    bars = defaultdict(lambda: defaultdict(dict))
+    kinds = {}
+    with open(path, encoding="utf-8") as f:
+        r = csv.DictReader(f)
+        if any(c not in (r.fieldnames or []) for c in E_COLS):
+            raise DataError("equities.csv needs columns %s" % ", ".join(E_COLS))
+        for row in r:
+            try:
+                t = _ts(row["ts"])
+                rec = {"ts": t, "open": _f(row["open"]), "high": _f(row["high"]), "low": _f(row["low"]),
+                       "close": _f(row["close"]), "volume": _i(row["volume"]), "bid": _f(row["bid"]),
+                       "ask": _f(row["ask"]), "bid_qty": _i(row["bid_qty"]), "ask_qty": _i(row["ask_qty"]),
+                       "tick_size": _f(row["tick_size"])}
+            except ValueError:
+                rejected["unparseable"] += 1
+                continue
+            o, h, l, c = rec["open"], rec["high"], rec["low"], rec["close"]
+            if row["kind"] not in ("equity", "etf") or not row["symbol"] or not rec["tick_size"]:
+                rejected["bad symbol, kind or tick size"] += 1
+            elif None in (o, h, l, c) or not (0 < l <= min(o, c) and h >= max(o, c)):
+                rejected["missing or inconsistent price"] += 1
+            elif not _in_session(t, minutes):
+                rejected["outside session"] += 1
+            elif t in bars[row["symbol"]][t.date()]:
+                rejected["duplicate bar"] += 1
+            else:
+                bars[row["symbol"]][t.date()][t] = rec
+                kinds[row["symbol"]] = row["kind"]
+    out = {s: {d: [v[t] for t in sorted(v)] for d, v in days.items()} for s, days in bars.items()}
+    digest = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    return EquityDataset(manifest, out, kinds, dict(rejected), digest)
+
+
+def write_equity_manifest(folder, name, source, synthetic, interval_minutes, fill_model, spread_pct=None):
+    doc = {"name": name, "source": source, "synthetic": synthetic, "kind": "equity",
+           "interval_minutes": interval_minutes, "fill_model": fill_model,
+           "files": {"equities.csv": sha256_file(os.path.join(folder, "equities.csv"))}}
+    if spread_pct is not None:
+        doc["estimated_spread_pct"] = spread_pct
+    with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=2, sort_keys=True)
+    return doc

@@ -62,6 +62,14 @@ def _underlyings(key, v):
         raise ConfigError("%s has duplicates" % key)
 
 
+KINDS = ("equity", "etf", "index_options")
+
+
+def _kinds(key, v):
+    if not isinstance(v, list) or not v or any(k not in KINDS for k in v) or len(set(v)) != len(v):
+        raise ConfigError("%s must be a non-empty list drawn from %s" % (key, ", ".join(KINDS)))
+
+
 def _index_names(key, v):
     if not isinstance(v, dict):
         raise ConfigError("%s must be an object" % key)
@@ -104,6 +112,13 @@ SCHEMA = {
     "holidays_file": _str,
     "costs_file": _str,
     "events_file": _str,
+    "instruments_enabled": _kinds,
+    "equity_universe_file": _str,
+    "equity_product": _const("intraday"),
+    "equity_min_price_inr": _num(lo=1),
+    "equity_min_top_value_inr": _num(lo=0),
+    "equity_min_volume_today": _num(lo=0, integer=True),
+    "gate_allow_estimated_spread": _bool,
     "live_orders_enabled": _const(False),
 }
 

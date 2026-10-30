@@ -29,6 +29,12 @@ class Contract:
     tick_size: float
     freeze_quantity: int
 
+    kind = "index_options"
+    cost_segment = "index_options"
+
+    def label(self):
+        return "%s (%s %s %.0f %s)" % (self.symbol, self.underlying, self.expiry, self.strike, self.option_type)
+
     def to_dict(self):
         return {"instrument_id": self.instrument_id, "symbol": self.symbol,
                 "underlying": self.underlying, "expiry": self.expiry.isoformat(),
@@ -37,11 +43,53 @@ class Contract:
                 "freeze_quantity": self.freeze_quantity}
 
 
+@dataclass(frozen=True)
+class Stock:
+    """An NSE cash-market share or ETF. Quantities are shares (lot_size 1)."""
+    instrument_id: int
+    symbol: str
+    name: str
+    series: str
+    tick_size: float
+    kind: str                  # "equity" or "etf", as declared in the universe file
+    lot_size: int = 1
+    freeze_quantity: int = 0
+    expiry: object = None
+    option_type: object = None
+    strike: object = None
+    cost_segment: str = "equity_intraday"
+
+    @property
+    def underlying(self):
+        return self.symbol
+
+    def label(self):
+        return "%s (%s, %s)" % (self.symbol, self.kind.upper(), self.name or "NSE")
+
+    def to_dict(self):
+        return {"instrument_id": self.instrument_id, "symbol": self.symbol, "name": self.name,
+                "series": self.series, "kind": self.kind, "tick_size": self.tick_size, "lot_size": 1}
+
+
 class Master(object):
-    def __init__(self, contracts, indices, rejected):
+    def __init__(self, contracts, indices, rejected, cash=None):
         self.contracts = contracts         # list[Contract]
         self.indices = indices             # {company_name: instrument_id}
         self.rejected = rejected           # [(line_no, reason)]
+        self.cash = cash or {}             # {symbol: row dict} NSE cash instruments (EQ series)
+        self.stocks = {}                   # {symbol: Stock} after bind_universe()
+
+    def bind_universe(self, universe):
+        """Resolve the universe file's symbols against the master. Unknown symbols raise DataError."""
+        missing = [u["symbol"] for u in universe if u["symbol"] not in self.cash]
+        if missing:
+            raise DataError("universe symbols not found as NSE EQ instruments in the scrip master: %s"
+                            % ", ".join(missing))
+        self.stocks = {}
+        for u in universe:
+            r = self.cash[u["symbol"]]
+            self.stocks[u["symbol"]] = Stock(r["id"], u["symbol"], r["name"], r["series"], r["tick"], u["kind"])
+        return self.stocks
 
     def index_id(self, name):
         if name not in self.indices:
@@ -52,6 +100,9 @@ class Master(object):
         for c in self.contracts:
             if c.instrument_id == iid:
                 return c
+        for st in self.stocks.values():
+            if st.instrument_id == iid:
+                return st
         return None
 
     def expiries(self, underlying, on_or_after):
@@ -88,9 +139,20 @@ def parse(text, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):
     missing = [c for c in REQUIRED if c not in (reader.fieldnames or [])]
     if missing:
         raise DataError("scrip master is missing columns: %s" % ", ".join(missing))
-    contracts, indices, rejected, seen = [], {}, [], set()
+    contracts, indices, rejected, seen, cash = [], {}, [], set(), {}
     for n, row in enumerate(reader, 2):
         itype = row["instrument_type"]
+        if (itype in ("STK", "ETF") and row["exchange"] == "NSE" and row["segment"] == "NSE"
+                and row.get("series", "EQ") == "EQ" and row["symbol"]):
+            try:
+                tick = float(row["tick_size"])
+                if tick <= 0:
+                    raise ValueError("tick")
+                cash[row["symbol"]] = {"id": int(row["id"]), "name": row["company_name"],
+                                       "series": row.get("series", ""), "tick": tick}
+            except ValueError:
+                rejected.append((n, "cash instrument with bad id or tick size"))
+            continue
         if itype == "IDX" and row["company_name"] in index_names and row["exchange"] == "NSE":
             try:
                 indices[row["company_name"]] = int(row["id"])
@@ -136,7 +198,7 @@ def parse(text, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):
     for key, sizes in lots.items():
         if len(sizes) > 1:
             raise DataError("%s %s has mixed lot sizes %s in one expiry" % (key[0], key[1], sorted(sizes)))
-    return Master(contracts, indices, rejected)
+    return Master(contracts, indices, rejected, cash)
 
 
 def load(path, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):
@@ -145,3 +207,20 @@ def load(path, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):
             return parse(f.read(), underlyings, index_names)
     except OSError as e:
         raise DataError("cannot read scrip master %s: %s" % (path, e))
+
+
+def load_universe(path):
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            syms = json.load(f)["symbols"]
+    except (OSError, ValueError, KeyError) as e:
+        raise DataError("cannot read universe file %s: %s" % (path, e))
+    seen = set()
+    for u in syms:
+        if not isinstance(u, dict) or not u.get("symbol") or u.get("kind") not in ("equity", "etf"):
+            raise DataError("universe entry %r needs a symbol and kind equity or etf" % (u,))
+        if u["symbol"] in seen:
+            raise DataError("universe lists %s twice" % u["symbol"])
+        seen.add(u["symbol"])
+    return syms

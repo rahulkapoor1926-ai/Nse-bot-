@@ -7,28 +7,104 @@
       "stt_sell_pct": 0.15,
       "exchange_txn_pct": 0.0355299,
       "sebi_pct": 0.0001,
-      "ipft_pct": 0.0000001,
+      "ipft_pct": 1e-07,
       "stamp_buy_pct": 0.003,
       "gst_pct": 18,
       "sources": [
         "https://www.sahi.com/pricing (read 2026-10-30): Rs 10 per order, STT 0.15% sell, NSE 0.0355299%, SEBI 0.0001%, IPFT 0.0000001%, stamp 0.003% buy",
         "Budget 2026 STT change effective 2026-04-01: https://www.icicidirect.com/ilearn/futures-and-options/articles/stt-changes-in-budget-2026-what-f-o-traders-should-know",
         "GST 18% on brokerage, exchange, SEBI and IPFT charges (sahi.com/pricing lists what GST applies to; the 18% rate is the standard GST rate on these services)"
-      ]
+      ],
+      "segment": "index_options"
     },
     {
       "effective_from": "2024-10-01",
       "brokerage_per_order_inr": 10,
-      "stt_sell_pct": 0.10,
+      "stt_sell_pct": 0.1,
       "exchange_txn_pct": 0.03503,
       "sebi_pct": 0.0001,
-      "ipft_pct": 0.0000001,
+      "ipft_pct": 1e-07,
       "stamp_buy_pct": 0.003,
       "gst_pct": 18,
       "sources": [
         "STT 0.10% on option premium sell from 2024-10-01 (Finance Act 2024); pre-2026 rate per ICICI Direct article above",
         "NSE uniform options transaction charge 0.03503% from 2024-10-01 (NSE circular on revised transaction charges, Sept 2024) - UNVERIFIED here, check before relying on pre-2026 backtests",
         "Brokerage assumed Rs 10/order for this period - UNVERIFIED against SAHI's historical tariff"
+      ],
+      "segment": "index_options"
+    },
+    {
+      "segment": "equity_intraday",
+      "effective_from": "2026-04-01",
+      "brokerage_per_order_inr": 10,
+      "brokerage_pct": 0.05,
+      "stt_sell_pct": 0.025,
+      "stt_buy_pct": 0,
+      "exchange_txn_pct": 0.0030699,
+      "exchange_sides": "both",
+      "sebi_pct": 0.0001,
+      "ipft_pct": 1e-07,
+      "stamp_buy_pct": 0.003,
+      "gst_pct": 18,
+      "dp_per_sell_inr": 0,
+      "sources": [
+        "https://www.sahi.com/pricing (read 2026-10-30): Rs 10 or 0.05% per order whichever is lower; STT 0.025% sell; NSE 0.0030699% buy and sell; stamp 0.003% buy; SEBI 0.0001%; IPFT 0.0000001%",
+        "effective_from set to 2026-04-01 only because that is when the page's figures are known to apply; earlier equity rates are not loaded, so earlier backtests are refused"
+      ]
+    },
+    {
+      "segment": "equity_delivery",
+      "effective_from": "2026-04-01",
+      "brokerage_per_order_inr": 10,
+      "brokerage_pct": 0.05,
+      "stt_sell_pct": 0.1,
+      "stt_buy_pct": 0.1,
+      "exchange_txn_pct": 0.0030699,
+      "exchange_sides": "sell",
+      "sebi_pct": 0.0001,
+      "ipft_pct": 1e-07,
+      "stamp_buy_pct": 0.015,
+      "gst_pct": 18,
+      "dp_per_sell_inr": 13.5,
+      "sources": [
+        "https://www.sahi.com/pricing (read 2026-10-30): Rs 10 or 0.05% whichever is lower; STT 0.1% buy and sell; stamp 0.015% buy; NSE 0.0030699% listed under Sell only; DP Rs 13.5 per company on sells; GST on brokerage, DP, exchange, IPFT, SEBI",
+        "ETFs: same brokerage as equity per sahi.com/pricing. STT on equity ETFs is assumed equal to shares here - UNVERIFIED"
+      ]
+    },
+    {
+      "segment": "equity_intraday",
+      "effective_from": "2024-10-01",
+      "brokerage_per_order_inr": 10,
+      "brokerage_pct": 0.05,
+      "stt_sell_pct": 0.025,
+      "stt_buy_pct": 0,
+      "exchange_txn_pct": 0.0030699,
+      "exchange_sides": "both",
+      "sebi_pct": 0.0001,
+      "ipft_pct": 1e-07,
+      "stamp_buy_pct": 0.003,
+      "gst_pct": 18,
+      "dp_per_sell_inr": 0,
+      "sources": [
+        "ASSUMED: the current sahi.com/pricing equity rates applied back to 2024-10-01 so historical stock backtests can run. Equity STT was not changed by Budget 2026 (that change was F&O only); exchange and brokerage for this period are UNVERIFIED and assumed equal to today's, which is at or above the published NSE equity rate of that period."
+      ]
+    },
+    {
+      "segment": "equity_delivery",
+      "effective_from": "2024-10-01",
+      "brokerage_per_order_inr": 10,
+      "brokerage_pct": 0.05,
+      "stt_sell_pct": 0.1,
+      "stt_buy_pct": 0.1,
+      "exchange_txn_pct": 0.0030699,
+      "exchange_sides": "sell",
+      "sebi_pct": 0.0001,
+      "ipft_pct": 1e-07,
+      "stamp_buy_pct": 0.015,
+      "gst_pct": 18,
+      "dp_per_sell_inr": 13.5,
+      "sources": [
+        "ASSUMED: the current sahi.com/pricing equity rates applied back to 2024-10-01 so historical stock backtests can run. Equity STT was not changed by Budget 2026 (that change was F&O only); exchange and brokerage for this period are UNVERIFIED and assumed equal to today's, which is at or above the published NSE equity rate of that period."
       ]
     }
   ]

@@ -15,7 +15,6 @@ written as empty fields, never zero.
 import csv
 import datetime as dt
 import os
-import shutil
 
 from . import store
 
@@ -43,7 +42,7 @@ def record_bar(md, master, cfg, bar_start, minutes, out_dir, strikes_each_side=S
     os.makedirs(folder, exist_ok=True)
     size = "%dm" % minutes
     written = 0
-    for u in cfg["underlyings"]:
+    for u in (cfg["underlyings"] if "index_options" in cfg["instruments_enabled"] else []):
         iid = master.index_id(cfg["index_names"][u])
         ub = [r for r in md.candles(iid, size, bar_start, end) if r[0] == bar_start]
         if not ub:
@@ -73,7 +72,44 @@ def record_bar(md, master, cfg, bar_start, minutes, out_dir, strikes_each_side=S
                          _v(q.bid_qty if q else None), _v(q.ask_qty if q else None), c.lot_size, c.tick_size])
         _append(os.path.join(folder, "options.csv"), store.O_COLS, rows)
         written += len(rows)
+    written += _record_stocks(md, master, cfg, bar_start, end, size, folder)
     return written
+
+
+def _record_stocks(md, master, cfg, bar_start, end, size, folder):
+    stocks = [s for s in master.stocks.values() if s.kind in cfg["instruments_enabled"]]
+    if not stocks:
+        return 0
+    snaps = md.quotes([s.instrument_id for s in stocks])
+    rows = []
+    for s in stocks:
+        b = [r for r in md.candles(s.instrument_id, size, bar_start, end) if r[0] == bar_start]
+        if not b:
+            continue
+        o = b[0]
+        q = snaps.get(s.instrument_id)
+        rows.append([o[0].isoformat(), s.symbol, s.kind, o[1], o[2], o[3], o[4], _v(o[5]),
+                     _v(q.bid if q else None), _v(q.ask if q else None),
+                     _v(q.bid_qty if q else None), _v(q.ask_qty if q else None), s.tick_size])
+    _append(os.path.join(folder, "equities.csv"), store.E_COLS, rows)
+    return len(rows)
+
+
+def build_equity(recordings_dir, out_dir, name, minutes):
+    """Concatenate recorded stock/ETF sessions into a dataset with real bid/ask (fill_model quotes)."""
+    os.makedirs(out_dir, exist_ok=True)
+    days = sorted(d for d in os.listdir(recordings_dir)
+                  if os.path.exists(os.path.join(recordings_dir, d, "equities.csv")))
+    with open(os.path.join(out_dir, "equities.csv"), "w", newline="", encoding="utf-8") as out:
+        w = csv.writer(out)
+        w.writerow(store.E_COLS)
+        for d in days:
+            with open(os.path.join(recordings_dir, d, "equities.csv"), encoding="utf-8") as f:
+                r = csv.reader(f)
+                next(r, None)
+                w.writerows(r)
+    return store.write_equity_manifest(out_dir, name, "SAHI live recording (%d sessions)" % len(days),
+                                       False, minutes, "quotes")
 
 
 def build(recordings_dir, out_dir, name, minutes):

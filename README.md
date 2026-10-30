@@ -1,6 +1,7 @@
-# NSE options bot (paper trading, read-only data)
+# NSE trading bot (paper trading, read-only data)
 
-NIFTY and BANKNIFTY index options on NSE, adapted from the 11-skill
+NSE stocks and ETFs, plus NIFTY and BANKNIFTY index options when an option
+trade is suitable, adapted from the 11-skill
 [day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill) pack.
 The original US pack is kept verbatim under `upstream/` and is not modified.
 
@@ -29,9 +30,10 @@ Run every command from the repository root (config paths are relative to it).
 | `backtest --dataset DIR --strategy FILE` | whole-dataset simulation (exploration only) |
 | `gate --dataset DIR --strategy FILE` | the 10,000-example validation gate with train/validation/test |
 | `sahi-check` | mints a read-only token and fetches sample data, without trading |
-| `record` | records index/option bars plus bid/ask snapshots from SAHI |
-| `build-dataset --out DIR --name N` | turns recordings into a dataset for `gate` |
-| `paper --strategy FILE [--dataset DIR]` | paper-trading loop |
+| `fetch-history --start D --end D --out DIR` | stock/ETF dataset from SAHI historical candles (estimated spread) |
+| `record` | records index, option, stock and ETF bars plus bid/ask snapshots from SAHI |
+| `build-dataset --out DIR --name N [--kind equity]` | turns recordings into a dataset for `gate` |
+| `paper --strategy FILE [--dataset DIR] ...` | paper-trading loop; repeat `--strategy` to run stocks first, then options |
 | `risk-status`, `report` | today's lockout state; read-only SIMULATED report |
 | `news --feeds FILE` | headlines from your feeds plus scheduled events |
 | `pelosi` | why the US Pelosi tracker has no Indian counterpart here |
@@ -52,6 +54,25 @@ python3 -m nse_bot --config config/paper.json sahi-check
 
 The client asks SAHI for a token scoped to `marketdata.read` and refuses a
 token with any other scope, so it cannot place orders even by mistake.
+
+## Stocks, ETFs and options
+
+`instruments_enabled` in the config chooses equity, etf and/or index_options.
+Stocks and ETFs come from `config/universe.example.json` (copy and edit it);
+every symbol must exist in SAHI's scrip master or the bot refuses to start.
+Stock trades are long-only intraday, sized in whole shares from cash (no
+leverage), and charged at SAHI's equity-intraday rates.
+
+Options are used only when suitable: the option strategy must have passed its
+own validation gate, at least one lot must fit the Rs 500 risk and outlay
+budget, and the quote must pass the liquidity checks. Give the stock strategy
+first and the option strategy second; with one open position allowed, the first
+trade that passes every check is the only one taken.
+
+Stock/ETF history can come from SAHI's candles (`fetch-history`). Those have no
+bid/ask, so fills use an assumed spread (default 0.10%, minimum 0.05%) and are
+labelled; you allowed this for stocks and ETFs only (`gate_allow_estimated_spread`).
+Options always need recorded bid/ask.
 
 ## How a trade is decided
 
