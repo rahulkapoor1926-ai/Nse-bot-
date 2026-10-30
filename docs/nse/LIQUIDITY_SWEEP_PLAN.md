@@ -1,6 +1,7 @@
 # Liquidity-sweep strategy with trade decision reports: proposed logic and tests
 
-Status: **proposal only, waiting for approval. No code has been written.**
+Status: **approved by jojo with 8 corrections and implemented (paper only, live orders disabled).**
+See section 8 for what was built, the test results and what is still incomplete.
 
 This adds a **new, separate strategy** (`sweep_reversal`) next to the existing
 opening-range strategy. The existing strategy, the 11 original skills, every
@@ -217,3 +218,39 @@ All with hand-built candles where the right answer is known in advance.
 
 Not changed: the ORB strategy, `entry.py`/`exit.py`/`risk.py`/`budget.py`
 behaviour, `gate.py` thresholds, `broker/`, `upstream/` (the 11 skills).
+
+
+## 8. Implementation status (after approval)
+
+Built:
+
+| Correction | Where |
+|---|---|
+| 1. Stop/target use Delta, Gamma, Vega and Theta; always labelled estimates | `contract_select.project`, `plan_for` (sizing uses a worse stop: IV shock, theta to flat_by, gap allowance, slippage) |
+| 2. Current-month NIFTY future checked before VWAP/volume/RVOL; fail closed | `sweep.futures_quality`, rule `data_future`; `instruments.Master.current_future` |
+| 3. Exits at recorded bids minus slippage, never at the stop price | `backtest/sweep_engine._simulate` (`stop_gap` when the bid gapped through) |
+| 4. ORB and sweep_reversal in separate books | `paper-day.yml` runs a second paper process with `state_dir=state/sweep`; dashboard `?book=sweep`; `report` shows `by_strategy` |
+| 5. No look-ahead, no survivorship bias | closed bars only, zone `known_at`, 1h/daily rebuilt from earlier 1m bars; contracts from recorded snapshots |
+| 6. Gate unchanged at 10,000; synthetic never counts | `gate.py` dispatch only; tests assert REJECTED for synthetic, INSUFFICIENT DATA for small real data |
+| 7. Gaps, missing quotes, wide spreads, IV changes, slippage | `tests/test_sweep_replay.py`, `tests/test_sweep.py` |
+| 8. Original skills and risk controls preserved | upstream 315 tests unchanged; same gate -> budget -> risk -> paper broker chain |
+
+Data recorder: `record --sweep --out state/sweep-recordings` stores the 1m index bar, the 1m
+current-month future bar and the option-chain snapshot every minute; `build-dataset --kind sweep
+--recordings state/sweep-recordings --underlying NIFTY` turns them into a hashed, non-synthetic dataset.
+
+Privacy: full Trade Decision Reports (candles, quotes, Greeks) are written to `decisions/` and stay
+in the private Actions cache. Only one-line summaries (`dashboard/decisions-<day>.jsonl`) are public.
+
+Incomplete or unverified:
+
+- SAHI field units for theta/vega (assumed paise) and the futures `instrument_type` (assumed
+  `FUTIDX`) are unverified until the first run with working SAHI secrets.
+- The gate will report INSUFFICIENT DATA until enough real sweep recordings exist, so every
+  sweep setup in paper trading is recorded as BLOCKED. This is intended.
+- With a Rs 500 per-trade risk limit, many NIFTY option setups size to zero lots after the
+  conservative stop; those are recorded as BLOCKED with the reason.
+- Each book has its own virtual Rs 20,000 and Rs 500 daily loss limit. Combined, the two paper
+  books could lose up to Rs 1,000 in a day; this does not apply to live trading, which stays off.
+- The strict 1h trend rule rejects many sweeps after gap-down opens. Not changed without approval.
+- The replay engine is O(n^2) per day; fine for months of data, slow for years.

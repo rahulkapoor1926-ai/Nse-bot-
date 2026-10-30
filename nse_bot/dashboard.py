@@ -108,6 +108,28 @@ def _trades(fills, names):
     return done, book
 
 
+def by_strategy(trades):
+    """Completed-trade results per strategy, so strategies are never pooled."""
+    out = {}
+    for t in trades:
+        s = out.setdefault(t.get("strategy") or "unknown", {"completed_trades": 0, "wins": 0, "net_pnl": 0.0})
+        s["completed_trades"] += 1
+        s["wins"] += t["net_pnl"] > 0
+        s["net_pnl"] = round(s["net_pnl"] + t["net_pnl"], 2)
+    for s in out.values():
+        s["win_rate_pct"] = round(100.0 * s["wins"] / s["completed_trades"], 1)
+    return out
+
+
+def _decisions(state_dir, day):
+    """Public one-line decision summaries for today (sweep_reversal), newest first."""
+    try:
+        rows = state.read_jsonl(os.path.join(_dir(state_dir), "decisions-%s.jsonl" % day))
+    except StateCorrupt as e:
+        return [{"error": str(e)}]
+    return list(reversed(rows[-50:]))
+
+
 def build(state_dir, cfg, now):
     now = clock.to_ist(now)
     today = now.date().isoformat()
@@ -201,6 +223,8 @@ def build(state_dir, cfg, now):
                    "available_inr": round(capital + realized_total - deployed, 2),
                    "completed_trades": len(trades), "wins": wins,
                    "win_rate_pct": round(100.0 * wins / len(trades), 1) if trades else None},
+        "by_strategy": by_strategy(trades),
+        "decisions_today": _decisions(state_dir, today),
         "open_positions": positions,
         "trades": sorted(trades, key=lambda t: t["exit_time"], reverse=True),
         "equity_curve": curve,

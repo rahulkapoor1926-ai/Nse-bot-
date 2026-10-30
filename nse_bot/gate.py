@@ -24,7 +24,7 @@ import json
 import os
 
 from . import state
-from .backtest import engine as option_engine, equity_engine, metrics
+from .backtest import engine as option_engine, equity_engine, metrics, sweep_engine
 
 MAX_TEST_STRATEGIES = 3
 MAX_UNRESOLVED_FRACTION = 0.01
@@ -42,6 +42,8 @@ def neighbours(strategy):
     out = []
     step = strategy["interval_minutes"]
     for key in ("stop_pct", "target_r"):
+        if key not in strategy:
+            continue
         for f in (0.8, 1.2):
             s = json.loads(json.dumps(strategy))
             s[key] = round(strategy[key] * f, 4)
@@ -52,12 +54,18 @@ def neighbours(strategy):
         for f in (0.8, 1.2):
             s = json.loads(json.dumps(strategy))
             nv = v * f
-            if key.endswith("_minutes"):
-                nv = max(step, int(round(nv / step)) * step)
+            if key.endswith("_minutes") and strategy["pattern"] != "sweep_reversal":
+                nv = max(step, int(round(nv / step)) * step)          # bar-aligned windows
                 if nv == v:
                     nv = v + (step if f > 1 else -step)
                     if nv < step:
                         continue
+            elif isinstance(v, int):
+                nv = int(round(nv))                                   # counts stay whole numbers
+                if nv == v:
+                    nv = v + (1 if f > 1 else -1)
+                if nv < 1:
+                    continue
             s["params"][key] = round(nv, 4)
             out.append(("params.%s x%.1f" % (key, f), s))
     return out
@@ -88,9 +96,14 @@ def evaluate(ds, strategy, cfg, costs, cal, state_dir, allow_synthetic=False):
 
     if ds.synthetic and not allow_synthetic:
         return done("REJECTED", "dataset is marked synthetic; synthetic data can never approve a signal")
-    engine = equity_engine if strategy["instrument"] == "equity" else option_engine
+    if strategy.get("pattern") == "sweep_reversal" or getattr(ds, "kind", None) == "sweep":
+        if strategy.get("pattern") != "sweep_reversal" or getattr(ds, "kind", None) != "sweep":
+            return done("REJECTED", "sweep_reversal needs a sweep dataset and a sweep dataset needs sweep_reversal")
+        engine = sweep_engine
+    else:
+        engine = equity_engine if strategy["instrument"] == "equity" else option_engine
     is_equity_ds = hasattr(ds, "fill_model")
-    if is_equity_ds != (engine is equity_engine):
+    if engine is not sweep_engine and is_equity_ds != (engine is equity_engine):
         return done("REJECTED", "strategy instrument %s does not match the dataset type" % strategy["instrument"])
     if is_equity_ds:
         doc["fill_model"] = ds.fill_model

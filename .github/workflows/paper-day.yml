@@ -41,7 +41,10 @@ jobs:
         id: day
         run: |
           cp config/paper.example.json config/paper.json
+          # independent book for sweep_reversal: own ledger, risk lockout and dashboard
+          python3 -c "import json; c=json.load(open('config/paper.json')); c['state_dir']='state/sweep'; json.dump(c, open('config/paper-sweep.json','w'), indent=2)"
           python3 -m nse_bot --config config/paper.json validate-config
+          python3 -m nse_bot --config config/paper-sweep.json validate-config
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import datetime as dt
           from nse_bot import clock
@@ -60,10 +63,11 @@ jobs:
           else
             git worktree add --orphan -b paper-state state
           fi
-          # broker/exchange data and logs never go to the public branch
-          printf 'instruments.csv\n*.part\nrecordings/\nlogs/\n.tmp-*\n' > state/.gitignore
-          git -C state rm -r -q --cached --ignore-unmatch instruments.csv recordings logs
-          mkdir -p state/recordings state/logs
+          # broker/exchange data, logs and full decision reports (quotes, candles) never
+          # go to the public branch; only one-line decision summaries do
+          printf 'instruments.csv\n*.part\nrecordings/\nsweep-recordings/\nlogs/\ndecisions/\n.tmp-*\n' > state/.gitignore
+          git -C state rm -r -q --cached --ignore-unmatch instruments.csv recordings sweep-recordings logs decisions sweep/logs sweep/decisions
+          mkdir -p state/recordings state/sweep-recordings state/logs state/sweep
 
       - name: Restore private data (instrument list, recordings, logs)
         if: steps.day.outputs.trading == 'true'
@@ -72,7 +76,11 @@ jobs:
           path: |
             state/instruments.csv
             state/recordings
+            state/sweep-recordings
             state/logs
+            state/decisions
+            state/sweep/logs
+            state/sweep/decisions
           key: private-state-${{ github.run_id }}
           restore-keys: private-state-
 
@@ -94,22 +102,35 @@ jobs:
           python3 -m nse_bot --config config/paper.json record --refresh-master --until "$UNTIL" &
           REC=$!
           sleep 20
+          # 1m index/future bars + option snapshots: the real data the sweep gate needs
+          python3 -m nse_bot --config config/paper.json record --sweep --out state/sweep-recordings \
+            --until "$UNTIL" &
+          SREC=$!
+          # sweep_reversal in its own book, so its results never mix with ORB
+          python3 -m nse_bot --config config/paper-sweep.json paper --until "$UNTIL" --every 30 \
+            --strategy config/strategies/sweep.example.json &
+          SWEEP=$!
           PAPER=0
           python3 -m nse_bot --config config/paper.json paper --until "$UNTIL" --every 30 \
             --strategy config/strategies/orb15-equity.example.json \
             --strategy config/strategies/orb15.example.json || PAPER=$?
-          RECORD=0
+          RECORD=0; SRECORD=0; SPAPER=0
           wait $REC || RECORD=$?
+          wait $SREC || SRECORD=$?
+          wait $SWEEP || SPAPER=$?
           kill $SAVER 2>/dev/null || true
-          python3 -m nse_bot --config config/paper.json risk-status || true
-          python3 -m nse_bot --config config/paper.json report || true
-          echo "paper exit $PAPER, record exit $RECORD"
-          [ "$PAPER" -eq 0 ] && [ "$RECORD" -eq 0 ]
+          for c in config/paper.json config/paper-sweep.json; do
+            python3 -m nse_bot --config $c risk-status || true
+            python3 -m nse_bot --config $c report || true
+          done
+          echo "paper exit $PAPER, sweep paper exit $SPAPER, record exit $RECORD, sweep record exit $SRECORD"
+          [ "$PAPER" -eq 0 ] && [ "$SPAPER" -eq 0 ] && [ "$RECORD" -eq 0 ] && [ "$SRECORD" -eq 0 ]
 
       - name: Save state
         if: always() && steps.day.outputs.trading == 'true'
         run: |
           python3 -m nse_bot --config config/paper.json dashboard > /dev/null || true
+          python3 -m nse_bot --config config/paper-sweep.json dashboard > /dev/null || true
           scripts/save_state.sh
 
       - name: Save private data
@@ -119,5 +140,9 @@ jobs:
           path: |
             state/instruments.csv
             state/recordings
+            state/sweep-recordings
             state/logs
+            state/decisions
+            state/sweep/logs
+            state/sweep/decisions
           key: private-state-${{ github.run_id }}

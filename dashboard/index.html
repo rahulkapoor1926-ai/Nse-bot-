@@ -55,6 +55,9 @@ h2 { font-size: 15px; margin: 22px 0 8px; color: var(--muted); font-weight: 600;
 .row dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; margin: 8px 0 0; font-size: 13px; }
 .row dt { color: var(--muted); font-size: 11px; } .row dd { margin: 0; font-variant-numeric: tabular-nums; }
 .empty { color: var(--muted); font-size: 14px; padding: 10px 0; }
+.tabs { display: flex; gap: 8px; margin: 0 0 14px; }
+.tabs a { flex: 1; text-align: center; padding: 8px 6px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); text-decoration: none; font-size: 14px; }
+.tabs a.on { background: var(--card); color: inherit; font-weight: 600; }
 svg { width: 100%; height: 160px; display: block; }
 .err { background: var(--card); border: 1px solid var(--down); color: var(--down); border-radius: 12px; padding: 10px 12px; margin-top: 10px; font-size: 13px; overflow-wrap: anywhere; }
 footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
@@ -67,6 +70,10 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
     <h1>Paper P&amp;L</h1>
     <span id="status" class="status Stopped"><span class="dot"></span><span id="status-text">Loading</span></span>
   </header>
+  <nav class="tabs" aria-label="Paper book">
+    <a id="tab-orb" href="?book=orb">ORB book</a>
+    <a id="tab-sweep" href="?book=sweep">Liquidity sweep book</a>
+  </nav>
   <div id="errors"></div>
 
   <div class="grid">
@@ -100,6 +107,11 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
   <h2>Completed trades</h2>
   <div class="list" id="trades"></div>
 
+  <section id="decisions-box" hidden>
+    <h2>Setup decisions today</h2>
+    <div class="list" id="decisions"></div>
+  </section>
+
   <footer>
     <div id="updated">Not loaded yet.</div>
     <div>Updates when the bot saves to GitHub, about every 5 minutes in market hours. This page reloads its data every minute.</div>
@@ -111,8 +123,11 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
   var owner = location.hostname.split(".")[0];
   var repo = location.pathname.split("/").filter(Boolean)[0];
   var params = new URLSearchParams(location.search);
+  // two independent paper books, each with its own virtual capital, ledger and loss limit
+  var book = params.get("book") === "sweep" ? "sweep" : "orb";
   var src = params.get("data") ||
-    ("https://raw.githubusercontent.com/" + owner + "/" + repo + "/paper-state/dashboard/data.json");
+    ("https://raw.githubusercontent.com/" + owner + "/" + repo + "/paper-state/" +
+     (book === "sweep" ? "sweep/" : "") + "dashboard/data.json");
 
   var inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
   function money(x) { return x === null || x === undefined ? "–" : inr.format(x); }
@@ -124,6 +139,7 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
     return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   }
   function el(id) { return document.getElementById(id); }
+  el("tab-" + book).className = "on";
   function setPnl(id, x) { var e = el(id); e.textContent = signed(x); e.className = "v " + cls(x); }
   function esc(s) { return String(s === null || s === undefined ? "–" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
@@ -182,6 +198,18 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
     }).join("");
   }
 
+  function decisions(list) {
+    // one line per evaluated setup; full reports with candle evidence stay private
+    el("decisions-box").hidden = book !== "sweep";
+    var box = el("decisions");
+    if (!list || !list.length) { box.innerHTML = '<div class="empty">No setups evaluated yet today.</div>'; return; }
+    box.innerHTML = list.slice(0, 30).map(function (r) {
+      if (r.error) return '<div class="err">' + esc(r.error) + '</div>';
+      return '<div class="row"><div class="top"><span>' + esc(r.underlying) + ' · ' + esc(r.decision) + '</span><span>' + when(r.evaluated_at) + '</span></div>' +
+        '<div class="sub">' + esc(r.decision === "SKIP" ? r.skip_reason : (r.why || r.skip_reason)) + '</div></div>';
+    }).join("");
+  }
+
   function render(d) {
     status(d);
     var t = d.today, T = d.totals;
@@ -204,6 +232,7 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
     curve(d.equity_curve);
     positions(d.open_positions);
     trades(d.trades);
+    decisions(d.decisions_today);
     var errs = (d.errors || []).slice();
     if (d.bot && d.bot.last_error) errs.unshift("Last bot error: " + d.bot.last_error);
     el("errors").innerHTML = errs.map(function (e) { return '<div class="err">' + esc(e) + '</div>'; }).join("");

@@ -31,8 +31,8 @@ Run every command from the repository root (config paths are relative to it).
 | `gate --dataset DIR --strategy FILE` | the 10,000-example validation gate with train/validation/test |
 | `sahi-check` | mints a read-only token and fetches sample data, without trading |
 | `fetch-history --start D --end D --out DIR` | stock/ETF dataset from SAHI historical candles (estimated spread) |
-| `record` | records index, option, stock and ETF bars plus bid/ask snapshots from SAHI |
-| `build-dataset --out DIR --name N [--kind equity]` | turns recordings into a dataset for `gate` |
+| `record [--sweep]` | records index, option, stock and ETF bars plus bid/ask snapshots from SAHI; `--sweep` records 1m index + future bars and option-chain snapshots for sweep_reversal |
+| `build-dataset --out DIR --name N [--kind equity\|sweep]` | turns recordings into a dataset for `gate` |
 | `paper --strategy FILE [--dataset DIR] [--until HH:MM] ...` | paper-trading loop; repeat `--strategy` to run stocks first, then options; `--until` ends a scheduled run |
 | `risk-status`, `report` | today's lockout state; read-only SIMULATED report |
 | `dashboard` | rebuilds `state/dashboard/data.json` for the web dashboard (read-only) |
@@ -94,3 +94,4 @@ See `docs/nse/AUDIT.md` for what that means in practice.
 - `docs/nse/RECOVERY.md` corrupted state, expired tokens, missing data, API failures
 - `docs/nse/IPHONE_HOSTING.md` free hosting on GitHub Actions, run from an iPhone
 - `docs/nse/DASHBOARD_PLAN.md` the paper-trading P&L dashboard (GitHub Pages) and what it makes public
+- `docs/nse/LIQUIDITY_SWEEP_PLAN.md` the sweep_reversal strategy, Trade Decision Reports, status and gaps (own paper book: dashboard `?book=sweep`)

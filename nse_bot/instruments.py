@@ -18,6 +18,17 @@ REQUIRED = ("id", "symbol", "company_name", "underlying_symbol", "exchange", "se
 
 
 @dataclass(frozen=True)
+class Future:
+    """Index future (instrument_type FUTIDX). Used only as a volume/VWAP source; never traded."""
+    instrument_id: int
+    symbol: str
+    underlying: str
+    expiry: dt.date
+    lot_size: int
+    tick_size: float
+
+
+@dataclass(frozen=True)
 class Contract:
     instrument_id: int
     symbol: str
@@ -72,7 +83,8 @@ class Stock:
 
 
 class Master(object):
-    def __init__(self, contracts, indices, rejected, cash=None):
+    def __init__(self, contracts, indices, rejected, cash=None, futures=None):
+        self.futures = futures or []       # list[Future] (index futures, for volume and VWAP only)
         self.contracts = contracts         # list[Contract]
         self.indices = indices             # {company_name: instrument_id}
         self.rejected = rejected           # [(line_no, reason)]
@@ -104,6 +116,12 @@ class Master(object):
             if st.instrument_id == iid:
                 return st
         return None
+
+    def current_future(self, underlying, day):
+        """The nearest-expiry index future on or after `day`, or None (callers fail closed)."""
+        live = sorted((f for f in self.futures if f.underlying == underlying and f.expiry >= day),
+                      key=lambda f: f.expiry)
+        return live[0] if live else None
 
     def expiries(self, underlying, on_or_after):
         return sorted({c.expiry for c in self.contracts
@@ -139,7 +157,7 @@ def parse(text, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):
     missing = [c for c in REQUIRED if c not in (reader.fieldnames or [])]
     if missing:
         raise DataError("scrip master is missing columns: %s" % ", ".join(missing))
-    contracts, indices, rejected, seen, cash = [], {}, [], set(), {}
+    contracts, indices, rejected, seen, cash, futures = [], {}, [], set(), {}, []
     for n, row in enumerate(reader, 2):
         itype = row["instrument_type"]
         if (itype in ("STK", "ETF") and row["exchange"] == "NSE" and row["segment"] == "NSE"
@@ -158,6 +176,14 @@ def parse(text, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):
                 indices[row["company_name"]] = int(row["id"])
             except ValueError:
                 rejected.append((n, "index id is not an integer"))
+            continue
+        if itype == "FUTIDX" and row["segment"] == "NFO" and row["underlying_symbol"] in underlyings:
+            try:
+                futures.append(Future(int(row["id"]), row["symbol"], row["underlying_symbol"],
+                                      dt.datetime.strptime(row["expiry_date"], "%d-%m-%Y").date(),
+                                      int(row["lot_size"]), float(row["tick_size"])))
+            except (ValueError, TypeError) as e:
+                rejected.append((n, "unparseable future: %s" % e))
             continue
         if itype != "OPTIDX" or row["segment"] != "NFO" or row["underlying_symbol"] not in underlyings:
             continue
@@ -198,7 +224,7 @@ def parse(text, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):
     for key, sizes in lots.items():
         if len(sizes) > 1:
             raise DataError("%s %s has mixed lot sizes %s in one expiry" % (key[0], key[1], sorted(sizes)))
-    return Master(contracts, indices, rejected, cash)
+    return Master(contracts, indices, rejected, cash, futures)
 
 
 def load(path, underlyings=("NIFTY", "BANKNIFTY"), index_names=()):

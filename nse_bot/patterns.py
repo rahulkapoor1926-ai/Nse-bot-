@@ -14,7 +14,7 @@ import datetime as dt
 
 from .errors import DataError
 
-PATTERNS = ("orb", "pdh_pdl")
+PATTERNS = ("orb", "pdh_pdl", "sweep_reversal")      # sweep_reversal lives in sweep.py
 INSTRUMENTS = ("index_option", "equity")
 
 
@@ -103,10 +103,15 @@ def detect(strategy, bars, minutes, prev_high=None, prev_low=None, start=0):
         return detect_orb(bars, strategy["params"], minutes, start)
     if p == "pdh_pdl":
         return detect_pdh_pdl(bars, strategy["params"], minutes, prev_high, prev_low, start)
+    if p == "sweep_reversal":
+        raise DataError("sweep_reversal is multi-timeframe; use sweep.evaluate / backtest.sweep_engine")
     raise DataError("unknown pattern %r (known: %s)" % (p, ", ".join(PATTERNS)))
 
 
 def validate_strategy(s):
+    if s.get("pattern") == "sweep_reversal":
+        from . import sweep
+        return sweep.validate(s)
     need = ("name", "instrument", "pattern", "params", "interval_minutes", "strike_offset",
             "stop_pct", "target_r")
     miss = [k for k in need if k not in s]

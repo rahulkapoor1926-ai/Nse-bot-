@@ -277,8 +277,11 @@ def cmd_dashboard(a):
 def cmd_record(a):
     from .data import recorder
     cfg, cal, cm, m, md = _sahi_ctx(a)
+    if a.sweep:
+        a.interval = 1
     step = dt.timedelta(minutes=a.interval)
-    print("recording %d-minute bars to %s (Ctrl-C to stop)" % (a.interval, a.out))
+    print("recording %d-minute %s to %s (Ctrl-C to stop)" % (
+        a.interval, "index/future bars + option snapshots" if a.sweep else "bars", a.out))
     while True:
         now = clock.now_ist()
         if _should_stop(a, cal, now):
@@ -294,7 +297,10 @@ def cmd_record(a):
         bar_start = opened + (k - 1) * step
         if bar_start >= opened:
             try:
-                n = recorder.record_bar(md, m, cfg, bar_start, a.interval, a.out)
+                if a.sweep:
+                    n = recorder.record_sweep_minute(md, m, cfg, cal, bar_start, a.out)
+                else:
+                    n = recorder.record_bar(md, m, cfg, bar_start, a.interval, a.out)
                 LOG.info("recorded %s: %d rows", bar_start.isoformat(), n)
             except NseBotError as e:
                 LOG.error("record failed for %s: %s", bar_start.isoformat(), e)
@@ -307,6 +313,10 @@ def cmd_record(a):
 
 def cmd_build_dataset(a):
     from .data import recorder
+    if a.kind == "sweep":
+        doc = recorder.build_sweep(a.recordings, a.out, a.name, a.underlying)
+        print(json.dumps(doc, indent=2))
+        return
     fn = recorder.build_equity if a.kind == "equity" else recorder.build
     doc = fn(a.recordings, a.out, a.name, a.interval)
     print(json.dumps(doc, indent=2))
@@ -349,6 +359,8 @@ def build_parser():
             s.add_argument("--dataset", action="append", help="dataset each strategy was approved on, same order")
             s.add_argument("--every", type=int, default=15)
             s.add_argument("--once", action="store_true")
+            s.add_argument("--sweep", action="store_true",
+                           help="record 1m index + current-month future bars and option snapshots (sweep_reversal data)")
         if name in ("paper", "record"):
             s.add_argument("--until", type=_hhmm, help="IST time HH:MM at which to exit (for scheduled jobs)")
         if name == "fetch-history":
@@ -361,11 +373,14 @@ def build_parser():
             s.add_argument("--interval", type=int, default=5)
             s.add_argument("--delay", type=int, default=5, help="seconds after bar close before recording")
             s.add_argument("--once", action="store_true")
+            s.add_argument("--sweep", action="store_true",
+                           help="record 1m index + current-month future bars and option snapshots (sweep_reversal data)")
         s.set_defaults(fn=fn)
     s = sub.add_parser("build-dataset")
     s.add_argument("--recordings", default="state/recordings"); s.add_argument("--out", required=True)
     s.add_argument("--name", required=True); s.add_argument("--interval", type=int, default=5)
-    s.add_argument("--kind", choices=("options", "equity"), default="options")
+    s.add_argument("--kind", choices=("options", "equity", "sweep"), default="options")
+    s.add_argument("--underlying", default="NIFTY", help="for --kind sweep")
     s.set_defaults(fn=cmd_build_dataset)
     sub.add_parser("risk-status").set_defaults(fn=cmd_risk_status)
     sub.add_parser("report").set_defaults(fn=cmd_report)

@@ -28,6 +28,8 @@ def build(state_dir):
         pos = led.positions()
         out["ledger"]["realized_pnl_inr"] = round(sum(p["realized"] for p in pos.values()), 2)
         out["ledger"]["open_positions"] = {k: p["qty"] for k, p in pos.items() if p["qty"]}
+        from . import dashboard
+        out["ledger"]["by_strategy"] = dashboard.by_strategy(dashboard._trades(fills, {})[0])
     except StateCorrupt as e:
         out["ledger"]["integrity"] = "CORRUPT: %s" % e
     for path in sorted(glob.glob(os.path.join(state_dir, "risk", "*.json"))):

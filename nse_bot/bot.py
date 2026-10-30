@@ -132,6 +132,9 @@ def manage_positions(ctx, now, ulast):
 def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
     prev = prev or {}
     strategy = strategy or ctx.strategy
+    if strategy["pattern"] == "sweep_reversal":
+        from . import sweep_live
+        return sweep_live.look(ctx, now, strategy)
     if strategy["instrument"] == "index_option":
         rows = scanner.scan(ubars, prev, ctx.master, ctx.cal, now, ctx.cfg, strategy)
     else:
