@@ -24,6 +24,7 @@ import datetime as dt
 import hmac
 import json
 import os
+import re
 import secrets
 import subprocess
 import urllib.error
@@ -71,7 +72,8 @@ def create_app(env=None, publish=None, github=None, now=clock.now_ist):
     root = env.get("DASH_STATE_ROOT", "state")
     control_dir = env.get("DASH_CONTROL_DIR")
     view = View(root, cfg, env.get("DASH_RECORDINGS"),
-                os.path.join(control_dir, control.FILE) if control_dir else None, now=now)
+                os.path.join(control_dir, control.FILE) if control_dir else None, now=now,
+                study_path=env.get("DASH_STUDY"))
     publish = publish or (lambda doc: _publish_git(control_dir, doc))
     github = github or _github
     repo, gtoken = env.get("GITHUB_REPOSITORY"), env.get("GITHUB_TOKEN")
@@ -180,6 +182,17 @@ def create_app(env=None, publish=None, github=None, now=clock.now_ist):
     @app.get("/api/logs")
     def api_logs():
         return jsonify({"rows": view.logs(mode())})
+
+    @app.get("/api/study")
+    def api_study():
+        return jsonify(view.study())
+
+    @app.get("/api/study/chart")
+    def api_study_chart():
+        day = request.args.get("day", "")
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+            return jsonify({"error": "day must be YYYY-MM-DD"}), 400
+        return jsonify(view.study_chart(day))
 
     @app.get("/api/reports")
     def api_reports():

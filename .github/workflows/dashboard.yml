@@ -71,6 +71,13 @@ jobs:
           key: fyers-recordings-${{ github.run_id }}
           restore-keys: fyers-recordings-
 
+      - name: Restore the signal study (private cache, Study tab)
+        uses: actions/cache/restore@v4
+        with:
+          path: state/signal-study
+          key: signal-study-${{ github.run_id }}
+          restore-keys: signal-study-
+
       - name: FYERS login (token masked, kept only for this job)
         if: github.event.inputs.recorder != 'false'
         env:
@@ -109,7 +116,7 @@ jobs:
             nohup python3 -m nse_bot --config config/paper.json fyers-record $REFRESH --out state/fyers-recordings \
               --until "$END" --max-calls-per-minute 4 --max-calls-per-second 2 --max-calls-per-day 450 > recorder.log 2>&1 &
           fi
-          DASH_KEY="$KEY" DASH_STATE_ROOT=ps DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings \
+          DASH_KEY="$KEY" DASH_STATE_ROOT=ps DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_STUDY=state/signal-study/study.json \
             DASH_CONFIG=config/paper.json DASH_HOST=127.0.0.1 DASH_PORT=8080 \
             nohup python3 -m nse_bot.web.app > flask.log 2>&1 &
           curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/download/2024.12.2/cloudflared-linux-amd64 \
@@ -154,7 +161,7 @@ jobs:
               git -C ps fetch -q origin +refs/heads/paper-state:refs/remotes/origin/paper-state && \
                 git -C ps reset -q --hard origin/paper-state && date -Iseconds > ps/.synced_at
             fi
-            pgrep -f "nse_bot.web.app" > /dev/null || { echo "dashboard restarted"; DASH_STATE_ROOT=ps DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_CONFIG=config/paper.json nohup python3 -m nse_bot.web.app >> flask.log 2>&1 & }
+            pgrep -f "nse_bot.web.app" > /dev/null || { echo "dashboard restarted"; DASH_STATE_ROOT=ps DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_STUDY=state/signal-study/study.json DASH_CONFIG=config/paper.json nohup python3 -m nse_bot.web.app >> flask.log 2>&1 & }
             pgrep -f "cloudflared tunnel" > /dev/null || { echo "tunnel stopped: the address no longer works; start a new run"; break; }
             sleep 60
           done

@@ -55,8 +55,9 @@ def _jsonl_tail(path, n):
 
 
 class View(object):
-    def __init__(self, root, cfg, recordings=None, control_path=None, now=clock.now_ist):
+    def __init__(self, root, cfg, recordings=None, control_path=None, now=clock.now_ist, study_path=None):
         self.root, self.cfg, self.recordings, self.control_path, self.now = root, cfg, recordings, control_path, now
+        self.study_path = study_path
 
     def _dir(self, rel):
         return os.path.join(self.root, rel) if rel else self.root
@@ -200,6 +201,39 @@ class View(object):
                 "atm_strike": num(snap[-1].get("atm_strike")), "options": opts, "spot_history": spot_hist,
                 "api_calls_today": summ.get("api_calls_this_process"), "status_counts": summ.get("status_counts"),
                 "source": "FYERS /options-chain-v3 (read-only)"}
+
+    # -- historical signal study (backtest/signal_study.py; no fills, no P&L) ------------
+
+    def _study(self):
+        if not self.study_path or not os.path.exists(self.study_path):
+            return None
+        return _read(self.study_path)
+
+    def study(self):
+        doc = self._study()
+        if doc is None:
+            return {"available": False, "reason": "no signal study in this deployment yet (run the signal-study workflow)"}
+        if "error" in doc:
+            return {"available": False, "reason": doc["error"]}
+        out = {"available": True, "generated": doc.get("generated"), "source": doc.get("source"),
+               "note": doc.get("note"), "coverage": doc.get("coverage"), "chart_days": sorted(doc.get("charts") or {})}
+        for fam in ("ORB", "Sweep"):
+            x = doc.get(fam) or {}
+            out[fam] = {"summary": x.get("summary"), "signals": x.get("signals") or [],
+                        "not_evaluable": x.get("not_evaluable"), "skipped": x.get("skipped"),
+                        "funnel_last_failed_rule": x.get("funnel_last_failed_rule")}
+        return out
+
+    def study_chart(self, day):
+        doc = self._study()
+        if not doc or "error" in doc:
+            return {"available": False}
+        bars = (doc.get("charts") or {}).get(day)
+        if bars is None:
+            return {"available": False, "reason": "no chart for %s" % day}
+        sig = [s for fam in ("ORB", "Sweep") for s in ((doc.get(fam) or {}).get("signals") or []) if s.get("day") == day]
+        return {"available": True, "day": day, "interval": "5m", "bars": bars, "signals": sig,
+                "source": "NIFTY 50 index 1-minute bars from FYERS, resampled to 5 minutes"}
 
     def controls(self):
         if not self.control_path:

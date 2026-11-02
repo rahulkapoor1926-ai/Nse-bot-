@@ -233,12 +233,125 @@ function control(action, body, confirmText) {
   }).catch(function (e) { m.textContent = "Not done: " + e.message; });
 }
 
+// ---- historical signal study (no fills, no P&L) ------------------------------------------
+var SVGNS = "http://www.w3.org/2000/svg";
+function sv(tag, attrs, parent) {
+  var e = document.createElementNS(SVGNS, tag);
+  Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+  if (parent) parent.appendChild(e);
+  return e;
+}
+var ST = { doc: null, day: null, chart: null };
+function renderStudy(j) {
+  ST.doc = j;
+  var stats = clear($("study-stats")), list = clear($("study-list")), cov = clear($("study-cov"));
+  clear($("study-months"));
+  if (!j || !j.available) { empty(list, (j && j.reason) || "no study"); $("study-day").disabled = true; return; }
+  if (j.note) $("study-note").textContent = j.note;
+  ["ORB", "Sweep"].forEach(function (f) {
+    var sm = (j[f] || {}).summary;
+    stat(stats, f + " signals", sm ? sm.signals : "not evaluable");
+    stat(stats, f + " CE / PE", sm ? sm.CE + " / " + sm.PE : "—");
+  });
+  var c = j.coverage || {}, ix = c.index || {}, fu = c.future || {};
+  function d(v) { return v === undefined || v === null ? "—" : v; }
+  cov.textContent = "Generated " + (j.generated || "—") + "\nSource: " + (j.source || "—") +
+    "\nIndex 1m: " + d(ix.sessions) + " sessions, " + d(ix.first) + " to " + d(ix.last) +
+    "\nFuture 1m (" + (fu.symbol || "none") + "): " + d(fu.sessions) + " sessions, " + d(fu.first) + " to " + d(fu.last) + (fu.note ? " (" + fu.note + ")" : "") +
+    "\nORB skipped: " + JSON.stringify((j.ORB || {}).skipped || {}) +
+    "\nSweep last failed rule: " + JSON.stringify((j.Sweep || {}).funnel_last_failed_rule || {}) +
+    "\nSweep not evaluable: " + JSON.stringify((j.Sweep || {}).not_evaluable || {});
+  monthBars(j);
+  var all = [];
+  ["ORB", "Sweep"].forEach(function (f) { ((j[f] || {}).signals || []).forEach(function (x) { all.push(x); }); });
+  all.sort(function (a, b) { return String(b.signal_time).localeCompare(String(a.signal_time)); });
+  if (!all.length) empty(list, "no signals in the covered period");
+  all.slice(0, 300).forEach(function (x) {
+    var it = item(list, x.day + " " + hhmm(x.signal_time) + " · " + x.family, pill(x.option_type, x.option_type === "CE" ? "ok" : "bad"),
+      ["Target strike " + num(x.target_strike, 0) + " · trigger " + num(x.trigger_close) + (x.regime ? " · " + x.regime : ""), "Tap to chart this day"]);
+    var last = list.lastChild;
+    last.style.cursor = "pointer";
+    last.addEventListener("click", function () { pickDay(x.day); window.scrollTo(0, $("study-day").getBoundingClientRect().top + window.scrollY - 80); });
+  });
+  var sel = clear($("study-day"));
+  sel.disabled = !(j.chart_days || []).length;
+  (j.chart_days || []).slice().reverse().forEach(function (d) { var o = el("option", "", d); o.value = d; sel.appendChild(o); });
+  if (!ST.day && j.chart_days && j.chart_days.length) pickDay(j.chart_days[j.chart_days.length - 1]);
+  else if (ST.day) sel.value = ST.day;
+}
+function monthBars(j) {
+  var svg = $("study-months"), months = {}, keys;
+  ["ORB", "Sweep"].forEach(function (f) {
+    var bm = ((j[f] || {}).summary || {}).by_month || {};
+    Object.keys(bm).forEach(function (m) { months[m] = months[m] || { ORB: 0, Sweep: 0 }; months[m][f] = bm[m].signals; });
+  });
+  keys = Object.keys(months).sort();
+  if (!keys.length) return;
+  var max = 1; keys.forEach(function (m) { max = Math.max(max, months[m].ORB, months[m].Sweep); });
+  var W = 320, H = 140, top = 8, bot = 18, gw = (W - 20) / keys.length, bw = Math.max(2, Math.min(10, gw / 2 - 2));
+  (max >= 4 ? [0, 0.5, 1] : [0, 1]).forEach(function (f) { var y = top + (H - top - bot) * (1 - f); sv("line", { x1: 20, x2: W, y1: y, y2: y, "class": "grid" }, svg); var t = sv("text", { x: 0, y: y + 3 }, svg); t.textContent = Math.round(max * f); });
+  keys.forEach(function (m, i) {
+    var x0 = 20 + i * gw + gw / 2;
+    ["ORB", "Sweep"].forEach(function (f, k) {
+      var h = (H - top - bot) * months[m][f] / max;
+      sv("rect", { x: x0 - bw - 1 + k * (bw + 2), y: H - bot - h, width: bw, height: Math.max(h, 0), rx: 2, "class": k ? "b-sweep" : "b-orb" }, svg);
+    });
+    var hit = sv("rect", { x: 20 + i * gw, y: 0, width: gw, height: H, fill: "transparent" }, svg);
+    hit.addEventListener("click", function () { $("study-months-tip").textContent = m + ": ORB " + months[m].ORB + ", Sweep " + months[m].Sweep + " signals"; });
+    if (keys.length <= 12 || i % 2 === 0) { var t = sv("text", { x: x0, y: H - 4, "text-anchor": "middle" }, svg); t.textContent = "JanFebMarAprMayJunJulAugSepOctNovDec".substr((+m.slice(5, 7) - 1) * 3, 3) + (i === 0 || m.slice(5, 7) === "01" ? " " + m.slice(2, 4) : ""); }
+  });
+}
+function pickDay(d) {
+  ST.day = d; $("study-day").value = d;
+  api("/api/study/chart?day=" + encodeURIComponent(d)).then(drawCandles);
+}
+function drawCandles(j) {
+  var svg = clear($("study-chart")), sig = clear($("chart-sig"));
+  ST.chart = j;
+  if (!j || !j.available || !(j.bars || []).length) { $("chart-tip").textContent = (j && j.reason) || "no bars"; return; }
+  var b = j.bars, W = 360, H = 220, L = 34, top = 6, bot = 16, lo = Infinity, hi = -Infinity;
+  b.forEach(function (x) { lo = Math.min(lo, x[3]); hi = Math.max(hi, x[2]); });
+  var pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
+  var bw = (W - L) / b.length;
+  function X(i) { return L + bw * i + bw / 2; }
+  function Y(v) { return top + (H - top - bot) * (hi - v) / (hi - lo); }
+  for (var g = 0; g <= 4; g++) { var v = lo + (hi - lo) * g / 4, y = Y(v); sv("line", { x1: L, x2: W, y1: y, y2: y, "class": "grid" }, svg); var t = sv("text", { x: 0, y: y + 3 }, svg); t.textContent = Math.round(v); }
+  b.forEach(function (x, i) {
+    var cls = x[4] >= x[1] ? "c-up" : "c-dn";
+    sv("line", { x1: X(i), x2: X(i), y1: Y(x[2]), y2: Y(x[3]), "class": cls, "stroke-width": 1 }, svg);
+    sv("rect", { x: X(i) - Math.max(1, bw * 0.35), y: Math.min(Y(x[1]), Y(x[4])), width: Math.max(1, bw * 0.7), height: Math.max(1, Math.abs(Y(x[1]) - Y(x[4]))), "class": cls }, svg);
+    if (i % 12 === 0) { var tt = sv("text", { x: X(i), y: H - 3, "text-anchor": "middle" }, svg); tt.textContent = hhmm(x[0]).slice(0, 5); }
+  });
+  (j.signals || []).forEach(function (s) {
+    var i = -1, ts = String(s.signal_time);
+    b.forEach(function (x, k) { if (String(x[0]) < ts) i = k; });
+    if (i < 0) return;
+    var up = s.option_type === "CE", y = up ? Y(b[i][3]) + 12 : Y(b[i][2]) - 12, x = X(i);
+    sv("path", { d: up ? "M" + x + " " + (y - 8) + "l6 10h-12z" : "M" + x + " " + (y + 8) + "l6 -10h-12z", "class": "mk " + (s.family === "ORB" ? "b-orb" : "b-sweep") }, svg);
+    if (s.target_strike) sv("line", { x1: L, x2: W, y1: Y(s.trigger_close), y2: Y(s.trigger_close), "class": "xh" }, svg);
+    sig.appendChild(el("div", "", s.family + " " + s.option_type + " at " + hhmm(s.signal_time) + " · trigger " + num(s.trigger_close) + " · target strike " + num(s.target_strike, 0) +
+      (s.entry_window ? " · entry window " + hhmm(s.entry_window[0]) + "–" + hhmm(s.entry_window[1]) : "")));
+  });
+  var xh = sv("line", { x1: 0, x2: 0, y1: top, y2: H - bot, "class": "xh", visibility: "hidden" }, svg);
+  function at(ev) {
+    var r = svg.getBoundingClientRect(), p = ev.touches ? ev.touches[0] : ev;
+    var i = Math.floor(((p.clientX - r.left) / r.width * W - L) / bw);
+    if (i < 0 || i >= b.length) return;
+    var x = b[i];
+    xh.setAttribute("x1", X(i)); xh.setAttribute("x2", X(i)); xh.setAttribute("visibility", "visible");
+    $("chart-tip").textContent = hhmm(x[0]).slice(0, 5) + "  O " + num(x[1]) + "  H " + num(x[2]) + "  L " + num(x[3]) + "  C " + num(x[4]);
+    if (ev.cancelable && ev.touches) ev.preventDefault();
+  }
+  ["mousemove", "touchstart", "touchmove", "click"].forEach(function (k) { svg.addEventListener(k, at, { passive: false }); });
+}
+
 // ---- loop -----------------------------------------------------------------------
 var loaders = {
   market: function () { return api("/api/overview").then(renderOverview); },
   signals: function () { return api("/api/signals").then(renderSignals); },
   positions: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/trades").then(renderTrades)]); },
   perf: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/performance").then(renderPerf), api("/api/reports").then(renderReports)]); },
+  study: function () { return ST.doc ? Promise.resolve() : api("/api/study").then(renderStudy); },
   control: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/logs").then(renderLogs)]); }
 };
 var busy = false;
@@ -259,6 +372,7 @@ document.addEventListener("DOMContentLoaded", function () {
   Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function (b) {
     b.addEventListener("click", function () { show(b.getAttribute("data-tab")); });
   });
+  $("study-day").addEventListener("change", function () { pickDay(this.value); });
   $("mode").addEventListener("change", function () { S.mode = this.value; refresh(); });
   $("btn-start").addEventListener("click", function () { control("start", { book: $("book").value }, "Start a paper-trading run on GitHub Actions? (paper only)"); });
   $("btn-pause").addEventListener("click", function () { control("pause", {}, "Stop new entries? Open positions keep being managed."); });

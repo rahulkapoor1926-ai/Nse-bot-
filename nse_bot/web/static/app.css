@@ -45,3 +45,17 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 .tabs button{flex:1;min-height:56px;background:none;border:0;color:var(--muted);font-size:13px;font-weight:600;-webkit-appearance:none}
 .tabs button.on{color:var(--acc)}
 .locked{padding:40px 20px;text-align:center}
+.warnbox{color:var(--warn);border-color:#4a3a1a}
+.legend{display:flex;gap:6px;align-items:center;color:var(--muted);margin-bottom:6px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-left:6px}
+.sw.orb,.b-orb{background:var(--acc);fill:var(--acc)}.sw.sweep,.b-sweep{background:#b48cff;fill:#b48cff}
+.bars,.candles{width:100%;display:block;touch-action:none}
+.bars{height:140px}.candles{height:240px;margin-top:6px}
+.bars text,.candles text{fill:var(--muted);font-size:9px}
+.grid{stroke:var(--line);stroke-width:1}
+.c-up{fill:var(--up);stroke:var(--up)}.c-dn{fill:var(--down);stroke:var(--down)}
+.xh{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.mk{stroke:var(--bg);stroke-width:2}
+.tip{min-height:18px;margin-top:6px}
+#study-day{width:100%}
+.tabs button{font-size:12px}

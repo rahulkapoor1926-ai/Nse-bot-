@@ -63,6 +63,22 @@
     <h2>Daily report</h2><div id="report" class="card mono small"></div>
   </section>
 
+  <section id="tab-study" class="tab">
+    <div class="card warnbox small" id="study-note">Signal study: when the live ORB and Sweep rules would have fired on real NIFTY index bars. No option prices, fills or P&amp;L.</div>
+    <div class="grid2" id="study-stats"></div>
+    <h2>Signals per month</h2>
+    <div class="card"><div class="legend small"><span class="sw orb"></span>ORB <span class="sw sweep"></span>Sweep</div><svg id="study-months" class="bars" viewBox="0 0 320 140" aria-label="Signals per month"></svg><div id="study-months-tip" class="small muted">Tap a bar for its numbers.</div></div>
+    <h2>Day chart (5-minute NIFTY index)</h2>
+    <div class="card">
+      <select id="study-day" aria-label="Signal day"></select>
+      <div id="chart-tip" class="small mono tip">Tap or drag on the chart for OHLC.</div>
+      <svg id="study-chart" class="candles" viewBox="0 0 360 220" preserveAspectRatio="none" aria-label="5-minute candles"></svg>
+      <div id="chart-sig" class="small muted"></div>
+    </div>
+    <h2>All signals</h2><div id="study-list" class="list"></div>
+    <h2>Coverage and rules</h2><div id="study-cov" class="card mono small"></div>
+  </section>
+
   <section id="tab-control" class="tab">
     <h2>Health</h2><div id="health" class="list"></div>
     <h2>Paper controls</h2>
@@ -86,6 +102,7 @@
   <button data-tab="signals">Signals</button>
   <button data-tab="positions">Trades</button>
   <button data-tab="perf">P&amp;L</button>
+  <button data-tab="study">Study</button>
   <button data-tab="control">Control</button>
 </nav>
 <script src="/static/app.js"></script>

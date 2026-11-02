@@ -163,6 +163,34 @@ class Web(unittest.TestCase):
             for bad in ("place_order", "/orders", "broker.buy", "broker.sell", "live_orders_enabled\": true"):
                 self.assertNotIn(bad, src, name)
 
+    def test_study_tab_serves_the_real_study_file_and_never_a_pnl(self):
+        study = os.path.join(self.dir, "study.json")
+        bars = [["2026-10-29T09:15:00+05:30", 25000, 25010, 24990, 25005]]
+        sig = {"family": "ORB", "day": "2026-10-29", "signal_time": "2026-10-29T09:45:00+05:30",
+               "option_type": "CE", "target_strike": 25000, "trigger_close": 25004}
+        state.write_json(study, {"generated": "x", "note": "No option premium, fill or P&L", "coverage": {},
+                                 "ORB": {"signals": [sig], "summary": {"signals": 1}},
+                                 "Sweep": {"signals": []}, "charts": {"2026-10-29": bars}})
+        self.app = webapp.create_app(dict(self.env, DASH_STUDY=study), publish=lambda d: True,
+                                     github=lambda *a, **k: (204, None), now=NOW)
+        self.c = self.app.test_client()
+        self.assertEqual(self.c.get("/api/study").status_code, 401)
+        self.login()
+        j = self.c.get("/api/study").get_json()
+        self.assertTrue(j["available"])
+        self.assertEqual(j["chart_days"], ["2026-10-29"])
+        self.assertNotIn("pnl", json.dumps(j).lower().replace("p&l", ""))
+        ch = self.c.get("/api/study/chart?day=2026-10-29").get_json()
+        self.assertEqual((ch["bars"], len(ch["signals"])), (bars, 1))
+        self.assertFalse(self.c.get("/api/study/chart?day=2026-10-30").get_json()["available"])
+        self.assertEqual(self.c.get("/api/study/chart?day=../../x").status_code, 400)
+
+    def test_no_study_file_says_so(self):
+        self.login()
+        j = self.c.get("/api/study").get_json()
+        self.assertFalse(j["available"])
+        self.assertIn("signal-study", j["reason"])
+
 
 class Controls(unittest.TestCase):
     """The paper loop side: controls only ever block new entries."""
