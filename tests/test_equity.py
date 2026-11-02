@@ -267,19 +267,12 @@ class PaperCycle(unittest.TestCase):
                           strategies)
         return bot.run_once(ctx, now)
 
-    def test_equity_entries_are_disabled(self):
-        """2 Nov 2026: NIFTY options only. Even with equity switched on in a config, the risk book blocks it."""
+    def test_equity_strategy_never_scans_live(self):
+        """2 Nov 2026: NIFTY index options only. An equity strategy produces no signal at all, even with
+        equity switched on in a config (the risk book would also refuse it: test_nifty_only)."""
         self.md.q[12027] = quote(bid=1003.0, ask=1003.1, at=t(9, 41), iid=12027, qty=2000, oi=None, volume=2_000_000)
         r = self.run_at(t(9, 41), [synth.EQ_STRATEGY])
-        self.assertEqual(self.broker.ledger.records(), [])
-        self.assertIn("only NIFTY options are enabled: equity and ETF entries are disabled",
-                      r["candidates"][0]["risk"]["reasons"])
-
-    def test_unapproved_stock_strategy_blocks(self):
-        other = dict(synth.EQ_STRATEGY, name="not-validated")
-        self.md.q[12027] = quote(bid=1003.0, ask=1003.1, at=t(9, 41), iid=12027, qty=2000, oi=None, volume=2_000_000)
-        r = self.run_at(t(9, 41), [other])
-        self.assertEqual(r["candidates"][0]["risk"]["verdict"], "BLOCK")
+        self.assertNotIn("candidates", r)
         self.assertEqual(self.broker.ledger.records(), [])
 
 

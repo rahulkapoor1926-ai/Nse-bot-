@@ -26,7 +26,7 @@ class Gate(unittest.TestCase):
     def check(self, gate, fwd):
         self.cfg["forward_validation"] = fwd
         book = risk.RiskBook.open(self.dir, DAY)
-        order = {"instrument_id": 1, "strategy": "s", "signal_known_at": t(9, 40).isoformat(), "side": "BUY"}
+        order = {"instrument_id": 1, "strategy": "s", "signal_known_at": t(9, 40).isoformat(), "side": "BUY", "kind": "index_options", "underlying": "NIFTY"}
         return book.check(order, self.cfg, synth.calendar(), t(10, 0), gate, [], {"lots": 1, "loss_at_stop_inr": 100},
                           {"reward_risk": 2.5, "net": {"net_reward_risk": 2.2}})
 

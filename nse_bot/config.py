@@ -166,6 +166,8 @@ def _cross_checks(c):
     out = []
     if c["max_risk_per_trade_inr"] > c["max_daily_loss_inr"]:
         out.append("max_risk_per_trade_inr exceeds max_daily_loss_inr")
+    if c["underlyings"] != ["NIFTY"]:
+        out.append("underlyings must be [\"NIFTY\"]: NIFTY index options only")
     if set(c["instruments_enabled"]) != {"index_options"}:
         out.append("instruments_enabled must be [\"index_options\"]: equity and ETF strategies are disabled "
                    "(NIFTY options only)")

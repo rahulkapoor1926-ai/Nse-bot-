@@ -115,7 +115,7 @@ class Web(unittest.TestCase):
         cfg = synth.cfg(os.path.join(self.root), risk_state_dir=os.path.join(self.root, "shared-risk"),
                         max_daily_loss_inr=1000, max_trades_per_day=5)
         book = risk.open_for(cfg, DAY)
-        book.record_entry({"instrument_id": 7, "strategy": "orb15", "signal_known_at": "a", "side": "BUY"}, t(9, 50), 1)
+        book.record_entry({"instrument_id": 7, "strategy": "orb15", "signal_known_at": "a", "side": "BUY", "kind": "index_options", "underlying": "NIFTY"}, t(9, 50), 1)
         book.record_exit(7, -120.0, cfg, t(10, 0), reason="stop")
         self.login()
         j = self.c.get("/api/overview?mode=standard").get_json()
@@ -176,7 +176,7 @@ class Controls(unittest.TestCase):
         shutil.rmtree(self.dir)
 
     def check(self, book):
-        o = {"instrument_id": 9, "strategy": "orb15", "signal_known_at": "z", "side": "BUY"}
+        o = {"instrument_id": 9, "strategy": "orb15", "signal_known_at": "z", "side": "BUY", "kind": "index_options", "underlying": "NIFTY"}
         return book.check(o, self.cfg, self.cal, t(10, 0), "APPROVED", [], {"lots": 1, "loss_at_stop_inr": 300.0},
                           {"reward_risk": 2.0, "net": {"net_reward_risk": 2.1}})
 
@@ -193,7 +193,7 @@ class Controls(unittest.TestCase):
 
     def test_emergency_halt_locks_the_day_but_exits_still_record(self):
         book = risk.RiskBook.open(self.dir, DAY)
-        book.record_entry({"instrument_id": 5, "strategy": "orb15", "signal_known_at": "a", "side": "BUY"}, t(9, 50))
+        book.record_entry({"instrument_id": 5, "strategy": "orb15", "signal_known_at": "a", "side": "BUY", "kind": "index_options", "underlying": "NIFTY"}, t(9, 50))
         control.Poller(lambda: {"halt_day": DAY.isoformat()}).apply(book, t(10, 0))
         again = risk.RiskBook.open(self.dir, DAY)
         self.assertTrue(again.locked)

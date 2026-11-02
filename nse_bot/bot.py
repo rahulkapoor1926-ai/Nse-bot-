@@ -15,7 +15,7 @@ failure never turns into "position closed" or "price = 0".
 
 import logging
 
-from . import budget, clock, entry, exit as exit_mod, feedcheck, forward, gate, options_desk, orderflow, quotes, regime, rr, scanner, volume_profile
+from . import budget, clock, entry, exit as exit_mod, feedcheck, forward, gate, options_desk, orderflow, quotes, regime, rr, scanner, scope, volume_profile
 from .errors import NseBotError
 
 log = logging.getLogger("nse_bot")
@@ -39,10 +39,9 @@ class Context(object):
 
 
 def enabled(ctx, strategy):
-    kinds = ctx.cfg["instruments_enabled"]
-    if strategy["instrument"] == "index_option":
-        return "index_options" in kinds
-    return "equity" in kinds or "etf" in kinds
+    """Only NIFTY index-option strategies ever scan (scope.py): equity/ETF strategies never run live,
+    whatever a config says."""
+    return scope.strategy_allowed(strategy) and "index_options" in ctx.cfg["instruments_enabled"]
 
 
 def series_for(ctx, strategy):
@@ -199,7 +198,7 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         plan["net"] = _net_rr(ctx, c, fill, plan["stop"], plan["target"], sizing, now)
         order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
                  "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY",
-                 "kind": getattr(c, "kind", "index_options")}
+                 "kind": scope.order_kind(c), "underlying": getattr(c, "underlying", None)}
         qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(
             ctx, row["underlying"], q, row.get("spot"), now, getattr(c, "kind", "index_options"))
         if getattr(c, "kind", "index_options") == "index_options":

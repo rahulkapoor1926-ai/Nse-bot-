@@ -10,7 +10,7 @@ Data per underlying (read-only SAHI calls, fetched once per new closed minute):
 
 import datetime as dt
 
-from . import budget, clock, contract_select, decisions, entry, feedcheck, forward, gate, options_desk, orderflow, quotes, regime, scanner, sweep, volume_profile
+from . import budget, clock, contract_select, decisions, entry, feedcheck, forward, gate, options_desk, orderflow, quotes, regime, scanner, scope, sweep, volume_profile
 from .errors import NseBotError
 
 _CACHE = {}
@@ -128,7 +128,8 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     plan["net"] = contract_select.net_rr(chosen, sizing.get("quantity") or c.lot_size, ctx.cfg, ctx.costs, now.date())
     gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy), ctx.cfg, ctx.costs)
     order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
-             "signal_known_at": known.isoformat(), "side": "BUY", "kind": "index_options"}
+             "signal_known_at": known.isoformat(), "side": "BUY", "kind": scope.order_kind(c),
+             "underlying": getattr(c, "underlying", None)}
     qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(ctx, u, q, signal["trigger_close"], now)
     of, ofp = orderflow.for_entry(ctx, "sweep", u, c.option_type, now)
     ex["orderflow"] = of

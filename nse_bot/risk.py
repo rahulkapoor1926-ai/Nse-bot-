@@ -28,7 +28,7 @@ import fcntl
 import time
 import os
 
-from . import clock, rr, state
+from . import clock, rr, scope, state
 
 # gate states a forward-validation book may trade through (no evidence yet); REJECTED/STALE always block
 FORWARD_GATE_OK = ("INSUFFICIENT EVIDENCE", "NOT EVALUATED")
@@ -330,8 +330,9 @@ class RiskBook(object):
         d = now.date()
         if not clock.at(d, cfg["no_entries_before"]) <= now <= clock.at(d, cfg["no_entries_after"]):
             r.append("outside the entry window %s-%s IST" % (cfg["no_entries_before"], cfg["no_entries_after"]))
-        if order.get("kind", "index_options") != "index_options":
-            r.append("only NIFTY options are enabled: equity and ETF entries are disabled")
+        why = scope.order_problem(order)
+        if why:
+            r.append(why)
         if order.get("side") != "BUY":
             r.append("only long option entries (BUY) are allowed")
         forward_note = None

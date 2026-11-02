@@ -14,7 +14,7 @@ PLAN = {"reward_risk": 2.0, "net": {"net_reward_risk": 2.1}}
 
 
 def order(iid=101, known="2026-10-29T09:40:00+05:30"):
-    return {"instrument_id": iid, "strategy": "orb15", "signal_known_at": known, "side": "BUY"}
+    return {"instrument_id": iid, "strategy": "orb15", "signal_known_at": known, "side": "BUY", "kind": "index_options", "underlying": "NIFTY"}
 
 
 class Risk(unittest.TestCase):

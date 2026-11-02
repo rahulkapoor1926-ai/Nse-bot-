@@ -248,8 +248,13 @@ def _should_stop(a, cal, now):
 def cmd_paper(a):
     from . import bot
     from .broker.paper import PaperBroker
-    cfg, cal, cm, m, md = _sahi_ctx(a)
+    from . import scope
     strats = [_strategy(p) for p in a.strategy]
+    bad = [s.get("name") for s in strats if not scope.strategy_allowed(s)]
+    if bad:                                  # checked before any data connection is made
+        raise ConfigError("refusing to run %s: only NIFTY index-option strategies may run (equity/ETF disabled)"
+                          % ", ".join(map(str, bad)))
+    cfg, cal, cm, m, md = _sahi_ctx(a)
     evs = events_mod.load(cfg["events_file"])
     datasets = a.dataset or []
     if datasets and len(datasets) != len(strats):

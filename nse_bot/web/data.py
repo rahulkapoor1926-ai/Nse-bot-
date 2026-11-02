@@ -35,6 +35,18 @@ def _read(path, missing=None):
         return {"error": str(e)}
 
 
+LEGACY_NOTE = ("historical record from before 2 Nov 2026 (equity/ETF scanning was switched off that day: "
+               "NIFTY index options only). Kept for audit; not a current signal.")
+
+
+def is_nifty_option(contract, strategy=None):
+    """Current-scope record: a NIFTY index option, not written by an equity/ETF strategy."""
+    if strategy and "equity" in str(strategy):
+        return False
+    c = str(contract or "")
+    return c.startswith("NSE:NIFTY") and c[-2:] in ("CE", "PE") and "BANKNIFTY" not in c
+
+
 def _jsonl_tail(path, n):
     try:
         return state.read_jsonl(path)[-n:]
@@ -115,8 +127,16 @@ class View(object):
         sw_dir = os.path.join(self._dir(m["Sweep"]), "dashboard", "decisions-%s.jsonl" % day)
         for d in reversed(_jsonl_tail(sw_dir, 200)):
             sweep.append(d)
-        return {"date": day, "orb": orb[:60], "orb_forward_log": list(reversed(fwd))[:60], "sweep": sweep[:60],
-                "rejected": [x for x in orb if x["status"] in ("REJECTED", "BLOCKED")][:60]}
+        hist = [dict(x, note=LEGACY_NOTE) for x in orb if not is_nifty_option(x["contract"])]
+        hist += [dict(contract=x.get("contract"), time=x.get("time"), status=x.get("decision"),
+                      reasons="; ".join(x.get("reasons") or []), strategy=x.get("strategy"), note=LEGACY_NOTE)
+                 for x in reversed(fwd) if not is_nifty_option(x.get("contract"), x.get("strategy"))]
+        orb = [x for x in orb if is_nifty_option(x["contract"])]
+        fwd = [x for x in fwd if is_nifty_option(x.get("contract"), x.get("strategy"))]
+        return {"date": day, "scope": "NIFTY index options only", "orb": orb[:60],
+                "orb_forward_log": list(reversed(fwd))[:60], "sweep": sweep[:60],
+                "rejected": [x for x in orb if x["status"] in ("REJECTED", "BLOCKED")][:60],
+                "historical": hist[:100]}
 
     def performance(self, mode):
         rep = _read(os.path.join(self._dir(MODES[mode]["ORB"]), "forward", "report.json"))
@@ -131,8 +151,11 @@ class View(object):
         for book in ("ORB", "Sweep"):
             d = self._dir(m[book])
             for a in _jsonl_tail(os.path.join(d, "alerts", "alerts.jsonl"), n):
+                text = a.get("message") or a.get("error")
+                if a.get("kind") == "candidate" and not is_nifty_option(str(text or "").partition(" ")[2].partition(":")[0]):
+                    text = "[historical, equity/ETF scanning since switched off] %s" % text
                 out.append({"book": book, "source": "alert", "time": a.get("time"), "kind": a.get("kind"),
-                            "text": a.get("message") or a.get("error")})
+                            "text": text})
             for t in _jsonl_tail(os.path.join(d, "notify", "notify.jsonl"), n):
                 out.append({"book": book, "source": "telegram", "time": t.get("time"), "kind": t.get("kind"),
                             "text": t.get("text") or t.get("message") or t.get("error")})

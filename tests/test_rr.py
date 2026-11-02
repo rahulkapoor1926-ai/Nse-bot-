@@ -64,7 +64,7 @@ class RiskCheck(unittest.TestCase):
 
     def check(self, plan):
         book = risk.RiskBook.open(self.dir, DAY)
-        order = {"instrument_id": 1, "strategy": "s", "signal_known_at": t(9, 40).isoformat(), "side": "BUY"}
+        order = {"instrument_id": 1, "strategy": "s", "signal_known_at": t(9, 40).isoformat(), "side": "BUY", "kind": "index_options", "underlying": "NIFTY"}
         return book.check(order, self.cfg, synth.calendar(), t(10, 0), "APPROVED", [],
                           {"lots": 1, "loss_at_stop_inr": 100}, plan)
 

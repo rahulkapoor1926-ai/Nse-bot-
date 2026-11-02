@@ -30,7 +30,7 @@ def sizing(loss=300.0, lots=1):
 
 def order(iid, strategy, known="2026-10-29T09:40:00+05:30"):
     return {"instrument_id": iid, "strategy": strategy, "signal_known_at": known, "side": "BUY",
-            "kind": "index_options"}
+            "kind": "index_options", "underlying": "NIFTY"}
 
 
 class Base(unittest.TestCase):

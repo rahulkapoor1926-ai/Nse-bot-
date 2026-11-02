@@ -178,6 +178,10 @@ function renderSignals(j) {
       [hhmm(x.evaluated_at), x.skip_reason || x.why || null]);
   });
   if (!s.firstChild) empty(s, "No sweep decision today.");
+  var hdiv = clear($("historical"));
+  (j.historical || []).forEach(function (x) { item(hdiv, x.contract + (x.strategy ? " (" + x.strategy + ")" : ""), pill("HISTORICAL", ""), [hhmm(x.time) + " · " + (x.status || ""), x.reasons]); });
+  $("hist-note").textContent = (j.historical || []).length ? j.historical[0].note : "";
+  if (!hdiv.firstChild) empty(hdiv, "None.");
   var r = clear($("rejected"));
   (j.rejected || []).forEach(function (x) { item(r, x.contract, hhmm(x.time), [x.reasons]); });
   if (!r.firstChild) empty(r, "No rejected signal today.");
