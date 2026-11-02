@@ -75,12 +75,15 @@ Our own recording is the only free source of NIFTY option bid/ask history, so th
 - **What:** every session minute (09:16 to 15:30 IST), NIFTY spot plus the ATM strike and 2 ITM strikes
   for CE (lower strikes) and PE (higher strikes) of the nearest expiry, from the spot at that minute.
 - **Fields:** ts, received_at, symbol, expiry, strike, option_type, moneyness, spot, atm_strike, bid, ask,
-  bid_qty, ask_qty, ltp, volume, oi, last_trade_time, last_trade_age_s, status, note, source.
-- **One batched request a minute:** a single FYERS `/depth` call with the index and ATM ±3 strikes for
-  both types (so the ATM can move without a second call). About 376 calls a session; the job is capped
+  bid_qty, ask_qty, ltp, volume, oi, last_change_at, no_change_s, status, note, source.
+- **One request a minute:** a single FYERS `/options-chain-v3` call for the nearest expiry (spot plus
+  bid, ask, LTP, volume and OI of every strike near the money). FYERS `/depth` refuses more than one
+  symbol per request ("More than one symbol is not allowed", live run 41458942560), so it is not used.
+  The chain has no quote time and no bid/ask quantities: those cells stay empty. About 376 calls a session; the job is capped
   at 450 a day, and paper-day's two processes at 2250 each, so the total stays under 5000.
 - **Honest flags:** `status` is OK, MISSING (not returned, or the request failed, with the reason in
-  `note`), STALE (last trade more than 120 s old), NO_BID / NO_ASK / NO_LTP. Missing fields are left
+  `note`), STALE (cumulative volume unchanged for more than 120 s, i.e. no trade, or a snapshot outside
+  market hours), AGE_UNKNOWN (first sighting, nothing to compare with yet), NO_BID / NO_ASK / NO_LTP. Missing fields are left
   empty, never 0 and never filled in.
 - **No duplicates:** one row per (minute, symbol); a restarted recorder reads the day's file back first.
 - **Reconnects:** a failed request writes MISSING rows, backs off (5, 10, 20, 40, 60 s) and tries again

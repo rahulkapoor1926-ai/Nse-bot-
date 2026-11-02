@@ -226,19 +226,6 @@ class FyersReadOnly(MarketData):
                 out[int(iid)] = self.quote_from_depth(iid, d)
         return out
 
-    def depth_batch(self, instrument_ids):
-        """Depth (bid, ask, LTP, volume, OI, last-trade time) for several symbols in ONE /depth request
-        (comma-separated symbols). Symbols FYERS does not return are simply absent: the caller marks
-        them MISSING, never fills them in."""
-        syms = {}
-        for iid in instrument_ids:
-            syms[self._sym(iid)] = int(iid)
-        if not syms:
-            return {}
-        doc = self._request("GET", DATA, "/depth", {"symbol": ",".join(syms), "ohlcv_flag": 1})
-        d = doc.get("d") or {}
-        return {syms[s]: self.quote_from_depth(syms[s], v) for s, v in d.items() if s in syms and v}
-
     def candles(self, instrument_id, size, start, end, oi=False):
         res = RESOLUTION.get(size)
         if res is None:

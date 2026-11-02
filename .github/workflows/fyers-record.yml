@@ -1,4 +1,4 @@
-# FYERS live options recorder: NIFTY ATM + 2 ITM strikes, CE and PE, one batched /depth request a
+# FYERS live options recorder: NIFTY ATM + 2 ITM strikes, CE and PE, one /options-chain-v3 request a
 # minute (bid, ask, LTP, volume, OI). READ-ONLY: the recorder has no order code and the command
 # refuses a config with live_orders_enabled true. Manual runs only: no schedule (needs approval).
 #
@@ -53,7 +53,7 @@ jobs:
           restore-keys: fyers-recordings-
 
       - name: Recorder tests
-        run: cd tests && python3 -m unittest test_fyers_recorder -v 2>&1 | tail -n 5
+        run: python3 -m unittest discover -s tests -p "test_fyers_recorder.py"
 
       - name: FYERS login (token masked, kept only for this job)
         env:

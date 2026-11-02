@@ -1,15 +1,17 @@
 """FYERS live options recorder: one snapshot a minute of NIFTY and its ATM + 2 ITM CE and PE.
 
 Read-only. Reuses the bot's FYERS client (broker/fyers.py) and symbol master. Each minute of the
-session it makes ONE batched /depth request for the index and the strikes around the money, then
-stores, per contract: timestamp, symbol, expiry, strike, CE/PE, moneyness, spot, bid, ask, the
-displayed quantities, LTP, volume, OI, last-trade time and a status.
+session it makes ONE /options-chain-v3 request for the nearest expiry (FYERS's /depth refuses more
+than one symbol per request: "More than one symbol is not allowed", live run 41458942560). From it,
+per contract: timestamp, symbol, expiry, strike, CE/PE, moneyness, spot, bid, ask, LTP, volume, OI
+and a status. The chain gives no quote time and no top-of-book quantities, so those stay empty.
 
-  status   OK        bid, ask and LTP present, last trade within STALE_SECONDS
-           STALE     the last trade is older than STALE_SECONDS (FYERS gives no quote timestamp,
-                     only the last-trade time, so staleness is measured on that)
+  status   OK          bid, ask and LTP present and the contract traded in the last STALE_SECONDS
+           STALE       no trade for more than STALE_SECONDS (its cumulative volume - for the index its
+                       value - has not changed), or the snapshot was taken outside the session
+           AGE_UNKNOWN first sighting this process: no earlier snapshot to compare volume with
            NO_BID / NO_ASK / NO_LTP   that field was missing (FYERS 0 = no quote; never stored as 0)
-           MISSING   FYERS returned nothing for the symbol, or the request failed (reason given)
+           MISSING     FYERS returned nothing for the contract, or the request failed (reason given)
            Several flags are joined with ';'. A missing value is an empty cell, never zero.
 
 Files (date-wise, CSV; Parquet is not used because the bot has no third-party dependencies):
@@ -17,9 +19,10 @@ Files (date-wise, CSV; Parquet is not used because the bot has no third-party de
                                              across restarts (existing keys are read back first)
   <out>/<YYYY-MM-DD>/summary.json            calls used, rows, status counts, symbols seen
 
-Budget: 1 request per minute, 375 minutes a session, plus a login and one start-up spot request,
-about 380 calls a day. The process refuses to go past --max-calls-per-day (default 450), so the
-recorder and the two paper bots together stay under FYERS's 5,000 calls a day.
+Budget: 1 request per minute (2 only if FYERS's first listed expiry differs from the master's),
+375 minutes a session plus a login: about 380 calls a day. The process refuses to go past
+--max-calls-per-day (default 450), so the recorder and the two paper bots together stay under
+FYERS's 5,000 calls a day.
 
 Reconnect: a failed request (network, HTTP error, rate limit) writes MISSING rows for that minute,
 waits with a growing back-off (5 s to 60 s) and tries again next minute; an expired token
@@ -37,12 +40,11 @@ from .. import clock, scanner
 from ..errors import NseBotError
 
 COLUMNS = ("ts", "received_at", "underlying", "symbol", "kind", "expiry", "strike", "option_type", "moneyness",
-           "spot", "atm_strike", "bid", "ask", "bid_qty", "ask_qty", "ltp", "volume", "oi", "last_trade_time",
-           "last_trade_age_s", "status", "note", "source")
+           "spot", "atm_strike", "bid", "ask", "bid_qty", "ask_qty", "ltp", "volume", "oi", "last_change_at",
+           "no_change_s", "status", "note", "source")
 FILE = "fyers_options_1m.csv"
 STALE_SECONDS = 120
 ITM = 2
-REQUEST_WIDTH = 3            # strikes each side of ATM requested, so a moving spot stays covered
 SESSION_START, SESSION_END = "09:15", "15:30"
 BACKOFF = (5, 10, 20, 40, 60)
 
@@ -63,6 +65,7 @@ class Recorder(object):
         self.seen = {}                         # day -> set of (ts, symbol)
         self.failures = 0
         self.stats = {}
+        self.changed = {}                      # symbol -> (last volume / index value, time it last changed)
 
     # -- selection ------------------------------------------------------------
 
@@ -90,20 +93,6 @@ class Recorder(object):
                 c = chain.get((strikes[i], typ)) if 0 <= i < len(strikes) else None
                 out.append(("ATM" if k == 0 else "ITM%d" % k, typ, strikes[i] if 0 <= i < len(strikes) else None, c))
         return strikes[atm], out
-
-    def request_ids(self, day):
-        """The index plus REQUEST_WIDTH strikes each side of the last ATM, both types (one request)."""
-        ids = [self.index_id]
-        if self.spot is None:
-            return ids
-        e = self.expiry(day)
-        if e is None:
-            return ids
-        strikes, atm = self.strikes_around(self.spot, e)
-        lo, hi = max(0, atm - REQUEST_WIDTH), min(len(strikes), atm + REQUEST_WIDTH + 1)
-        want = set(strikes[lo:hi])
-        ids += [c.instrument_id for c in self.master.chain(self.u, e) if c.strike in want]
-        return ids
 
     # -- files ----------------------------------------------------------------
 
@@ -166,38 +155,40 @@ class Recorder(object):
 
     # -- one minute -------------------------------------------------------------
 
-    def _status(self, q, at):
-        if q is None:
-            return "MISSING", None
-        flags = []
-        for name, v in (("NO_BID", q.bid), ("NO_ASK", q.ask), ("NO_LTP", q.ltp)):
-            if v is None:
-                flags.append(name)
-        age = None if q.ts is None else round((at - q.ts).total_seconds(), 1)
-        if age is None or age > STALE_SECONDS:
-            flags.insert(0, "STALE")
-        return ";".join(flags) or "OK", age
+    def _age(self, sym, mark, at):
+        """Seconds since `mark` (cumulative volume; the value for the index) last changed, or None at
+        the first sighting. A missing mark never counts as a change."""
+        prev = self.changed.get(sym)
+        if mark is None:
+            return (round((at - prev[1]).total_seconds(), 1), prev[1]) if prev else (None, None)
+        if prev is None:
+            self.changed[sym] = (mark, at)
+            return None, None
+        if mark != prev[0]:
+            self.changed[sym] = (mark, at)
+            return 0.0, at
+        return round((at - prev[1]).total_seconds(), 1), prev[1]
 
-    def _row(self, ts, received, kind, label, typ, strike, c, q, atm, note=""):
-        status, age = self._status(q, received)
-        if kind == "index" and q is not None:
-            status = "STALE" if "STALE" in status else ("NO_LTP" if q.ltp is None else "OK")   # no book for an index
-        if kind == "index":
-            sym = self.md.symbols.get(self.index_id, "")
-        elif c is not None:
-            sym = self.md.symbols.get(c.instrument_id, "")
-        else:
-            sym, status, note = "(none listed: %s %s)" % (strike, typ), "MISSING", "no contract listed at this strike"
-        return {"ts": ts.isoformat(), "received_at": received.isoformat(), "underlying": self.u,
-                "symbol": sym, "kind": kind,
-                "expiry": c.expiry.isoformat() if c is not None and c.expiry else None, "strike": strike,
-                "option_type": typ, "moneyness": label, "spot": self.spot, "atm_strike": atm,
-                "bid": q.bid if q else None, "ask": q.ask if q else None,
-                "bid_qty": q.bid_qty if q else None, "ask_qty": q.ask_qty if q else None,
-                "ltp": q.ltp if q else None, "volume": q.volume if q else None, "oi": q.oi if q else None,
-                "last_trade_time": q.ts.isoformat() if q and q.ts else None, "last_trade_age_s": age,
-                "status": status, "note": note,
-                "source": "fyers"}
+    def _status(self, fields, sym, mark, at, in_session):
+        if fields is None:
+            return "MISSING", None, None
+        flags = [n for n, k in (("NO_BID", "bid"), ("NO_ASK", "ask"), ("NO_LTP", "ltp")) if k in fields
+                 and fields[k] is None]
+        age, since = self._age(sym, mark, at)
+        if not in_session or (age is not None and age > STALE_SECONDS):
+            flags.insert(0, "STALE")
+        elif age is None:
+            flags.insert(0, "AGE_UNKNOWN")
+        return ";".join(flags) or "OK", age, since
+
+    def _in_session(self, at):
+        d = at.date()
+        return self.cal.is_trading_day(d) and clock.at(d, SESSION_START) <= at <= clock.at(d, SESSION_END) + \
+            dt.timedelta(minutes=1)
+
+    def _base(self, ts, received, kind, sym):
+        return {"ts": ts.isoformat(), "received_at": received.isoformat(), "underlying": self.u, "symbol": sym,
+                "kind": kind, "spot": self.spot, "source": "fyers /options-chain-v3"}
 
     def record_minute(self, ts):
         """One snapshot labelled `ts` (a minute boundary). Returns rows written (0 if already recorded)."""
@@ -206,30 +197,55 @@ class Recorder(object):
         if self.selection is not None and all((ts.isoformat(), self.md.symbols.get(c.instrument_id, ""))
                                               in keys for _, _, _, c in self.selection[1] if c is not None):
             return 0                                   # this minute is already on disk
+        e = self.expiry(day)
+        if e is None:
+            raise NseBotError("no %s expiry passes the calendar cross-check" % self.u)
         try:
-            ids = self.request_ids(day)
-            if len(ids) == 1:                          # start-up: learn the spot first (one extra call)
-                q = self.md.depth_batch(ids).get(self.index_id)
-                self.spot = q.ltp if q else None
-                ids = self.request_ids(day)
-            got = self.md.depth_batch(ids)
+            ch = self.md.option_chain(self.index_id, e, enrich_depth=False)
             received = self.now()
             self.failures = 0
-        except NseBotError as e:
-            return self._failed(ts, day, e)
-        iq = got.get(self.index_id)
-        if iq is not None and iq.ltp is not None:
-            self.spot = iq.ltp
-        rows = [self._row(ts, received, "index", "", None, None, None, iq, None)]
+        except NseBotError as err:
+            return self._failed(ts, day, err)
+        live = self._in_session(received)
+        self.spot = ch.get("spot")
+        isym = self.md.symbols.get(self.index_id, "index")
+        st, age, since = self._status(None if self.spot is None else {"ltp": self.spot}, isym, self.spot,
+                                      received, live)
+        idx = self._base(ts, received, "index", isym)
+        idx.update({"ltp": self.spot, "status": st, "no_change_s": age,
+                    "last_change_at": since.isoformat() if since else None,
+                    "note": "" if live else "outside market hours"})
+        rows = [idx]
         if self.spot is None:
-            rows[0]["note"] = "no NIFTY spot: options not selectable this minute"
+            idx["note"] = "no NIFTY spot in the chain: options not selectable this minute"
             return self._write(day, rows)
+        legs = {(l["option_type"], l["strike"]): l for l in ch.get("legs") or []}
         atm, sel = self.select(self.spot, day)
         self.selection = (atm, sel)
         for label, typ, strike, c in sel:
-            q = got.get(c.instrument_id) if c is not None else None
-            note = "" if q is not None or c is None else "not returned by FYERS /depth"
-            rows.append(self._row(ts, received, "option", label, typ, strike, c, q, atm, note))
+            if c is None:
+                r = self._base(ts, received, "option", "(none listed: %s %s)" % (strike, typ))
+                r.update({"strike": strike, "option_type": typ, "moneyness": label, "atm_strike": atm,
+                          "status": "MISSING", "note": "no contract listed at this strike"})
+                rows.append(r)
+                continue
+            sym = self.md.symbols.get(c.instrument_id, "")
+            leg = legs.get((typ, strike))
+            f = None if leg is None else {k: leg.get(k) for k in ("bid", "ask", "ltp")}
+            st, age, since = self._status(f, sym, None if leg is None else leg.get("volume"), received, live)
+            r = self._base(ts, received, "option", sym)
+            r.update({"expiry": c.expiry.isoformat() if c.expiry else None, "strike": strike, "option_type": typ,
+                      "moneyness": label, "atm_strike": atm, "status": st, "no_change_s": age,
+                      "last_change_at": since.isoformat() if since else None})
+            if leg is None:
+                r["note"] = "not returned by FYERS /options-chain-v3"
+            else:
+                r.update({k: leg.get(k) for k in ("bid", "ask", "ltp", "volume", "oi")})
+                notes = [] if live else ["outside market hours"]
+                if leg.get("symbol") and leg["symbol"] != sym:
+                    notes.append("chain symbol %s" % leg["symbol"])
+                r["note"] = "; ".join(notes)
+            rows.append(r)
         return self._write(day, rows)
 
     def _failed(self, ts, day, err):
@@ -244,7 +260,7 @@ class Recorder(object):
                 self.log("re-login not possible: %s" % str(e)[:120])
         rows = [{"ts": ts.isoformat(), "received_at": self.now().isoformat(), "underlying": self.u,
                  "symbol": self.md.symbols.get(self.index_id, "index"), "kind": "index", "status": "MISSING",
-                 "note": "request failed: %s" % msg, "source": "fyers"}]
+                 "note": "request failed: %s" % msg, "source": "fyers /options-chain-v3"}]
         if self.selection is not None:
             atm, sel = self.selection
             for label, typ, strike, c in sel:
@@ -253,7 +269,7 @@ class Recorder(object):
                                  "symbol": self.md.symbols.get(c.instrument_id, ""), "kind": "option",
                                  "expiry": c.expiry.isoformat(), "strike": strike, "option_type": typ,
                                  "moneyness": label, "atm_strike": atm, "status": "MISSING",
-                                 "note": "request failed: %s" % msg, "source": "fyers"})
+                                 "note": "request failed: %s" % msg, "source": "fyers /options-chain-v3"})
         n = self._write(day, rows)
         self.sleep(BACKOFF[min(self.failures, len(BACKOFF)) - 1])
         return n
