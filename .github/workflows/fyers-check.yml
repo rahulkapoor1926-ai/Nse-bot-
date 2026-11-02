@@ -9,7 +9,7 @@ on:
       probe:
         description: "extra read-only probe to run after the check"
         type: choice
-        options: [none, orderflow, profile, options]
+        options: [none, orderflow, profile, options, history]
         default: none
 
 permissions:
@@ -18,7 +18,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Safety tests
@@ -52,3 +52,10 @@ jobs:
           FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
           FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
         run: python3 scripts/probe_options_desk.py
+      - name: Historical option data coverage probe (read-only)
+        if: github.event.inputs.probe == 'history'
+        env:
+          FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/probe_fyers_history.py
