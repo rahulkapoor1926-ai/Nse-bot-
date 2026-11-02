@@ -1,6 +1,6 @@
 # FYERS live options recorder: NIFTY ATM + 2 ITM strikes, CE and PE, one /options-chain-v3 request a
 # minute (bid, ask, LTP, volume, OI). READ-ONLY: the recorder has no order code and the command
-# refuses a config with live_orders_enabled true. Manual runs only: no schedule (needs approval).
+# refuses a config with live_orders_enabled true. Weekday schedule approved 2 Nov 2026.
 #
 # API budget: at most 450 calls a day for this job. paper-day's two processes are capped at 2250
 # each, so all FYERS use together stays under 4950 < 5000 calls a day.
@@ -8,6 +8,12 @@
 name: fyers-record
 
 on:
+  # Weekday schedule approved by jojo on 2 Nov 2026 (decision card): genuine bid/ask builds a real
+  # backtest dataset day by day. Two halves because a job may run 6 h at most; the recorder never
+  # writes a minute twice. Non-trading days exit at once.
+  schedule:
+    - cron: "40 3 * * 1-5"    # 09:10 IST, records to 12:20
+    - cron: "15 6 * * 1-5"    # 11:45 IST, waits for the morning job, records to 15:31
   workflow_dispatch:
     inputs:
       until:
@@ -28,14 +34,24 @@ concurrency:
 jobs:
   record:
     runs-on: ubuntu-latest
-    timeout-minutes: 400
+    timeout-minutes: 355
     env:
       TZ: Asia/Kolkata
       FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
     steps:
       - uses: actions/checkout@v5
 
+      - name: Trading day?
+        id: day
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from nse_bot import clock
+          cal = clock.Calendar.load("nse_bot/data/nse_holidays.json")
+          print("trading=%s" % str(cal.is_trading_day(clock.now_ist().date())).lower())
+          PY
+
       - name: Config (paper, FYERS, real orders disabled)
+        if: steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           cp config/paper.example.json config/paper.json
           python3 -m nse_bot --config config/paper.json validate-config
@@ -43,6 +59,7 @@ jobs:
           mkdir -p state/fyers-recordings
 
       - name: Restore recordings (private cache)
+        if: (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -53,9 +70,11 @@ jobs:
           restore-keys: fyers-recordings-
 
       - name: Recorder tests
+        if: (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         run: python3 -m unittest discover -s tests -p "test_fyers_recorder.py"
 
       - name: FYERS login (token masked, kept only for this job)
+        if: (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         env:
           FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
           FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
@@ -72,11 +91,14 @@ jobs:
           PY
 
       - name: Record
+        if: (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         env:
           UNTIL_INPUT: ${{ github.event.inputs.until }}
           SMOKE_INPUT: ${{ github.event.inputs.smoke }}
         run: |
-          UNTIL="${UNTIL_INPUT:-15:31}"
+          if [ -n "$UNTIL_INPUT" ]; then UNTIL="$UNTIL_INPUT";
+          elif [ "${{ github.event_name }}" = "schedule" ] && [ "$(date +%H)" -lt 11 ]; then UNTIL=12:20;
+          else UNTIL=15:31; fi
           SMOKE="${SMOKE_INPUT:-0}"
           REFRESH=""
           # a fresh symbol master each day (strikes and expiries change)
@@ -86,14 +108,14 @@ jobs:
             --max-calls-per-minute 4 --max-calls-per-second 2 --max-calls-per-day 450
 
       - name: What was recorded (symbols, statuses, API calls)
-        if: always()
+        if: always() && (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           D=state/fyers-recordings/$(date +%F)
           [ -f "$D/summary.json" ] && cat "$D/summary.json" || echo "no recording for today"
           [ -f "$D/fyers_options_1m.csv" ] && { echo "--- first rows ---"; head -n 4 "$D/fyers_options_1m.csv"; }
 
       - name: Save recordings (private cache)
-        if: always()
+        if: always() && (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/save@v4
         with:
           path: |
