@@ -10,7 +10,7 @@ Data per underlying (read-only SAHI calls, fetched once per new closed minute):
 
 import datetime as dt
 
-from . import budget, clock, contract_select, decisions, entry, feedcheck, gate, quotes, scanner, sweep
+from . import budget, clock, contract_select, decisions, entry, feedcheck, gate, orderflow, quotes, scanner, sweep
 from .errors import NseBotError
 
 _CACHE = {}
@@ -120,6 +120,9 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
              "signal_known_at": known.isoformat(), "side": "BUY"}
     qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(ctx, u, q, signal["trigger_close"], now)
+    of, ofp = orderflow.for_entry(ctx, "sweep", u, c.option_type, now)
+    ex["orderflow"] = of
+    qp = qp + ofp
     verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
     ex.update({"gate": gstatus, "sizing": {k: v for k, v in sizing.items() if k != "warning"},
                "risk": verdict["verdict"], "risk_reasons": verdict["reasons"], "plan": plan})

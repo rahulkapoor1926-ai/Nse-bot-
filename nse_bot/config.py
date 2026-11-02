@@ -128,6 +128,8 @@ SCHEMA = {
     "gate_allow_estimated_spread": _bool,
     "live_orders_enabled": _const(False),
     "data_source": _choice("sahi", "fyers"),
+    # order-flow confirmation of ORB / sweep entries (orderflow.py); "required" blocks when not confirmed
+    "orderflow_confirmation": _choice("required", "off"),
 }
 
 

@@ -208,7 +208,12 @@ class FyersReadOnly(MarketData):
             ask_qty=_int(asks[0].get("volume")) if asks and _price(asks[0].get("price")) else None,
             ts=ts, volume=_int(d.get("v")), oi=_int(d.get("oi")),
             dpr_low=_price(d.get("lower_ckt")), dpr_high=_price(d.get("upper_ckt")), source="fyers",
-            extra={"received_at": self._now().isoformat()})
+            extra={"received_at": self._now().isoformat(),
+                   # order-flow inputs (resting orders only; FYERS gives no trade side)
+                   "depth": {"bids": [(_price(x.get("price")), _int(x.get("volume")), _int(x.get("ord"))) for x in bids],
+                             "asks": [(_price(x.get("price")), _int(x.get("volume")), _int(x.get("ord"))) for x in asks],
+                             "total_buy_qty": _int(d.get("totalbuyqty")), "total_sell_qty": _int(d.get("totalsellqty")),
+                             "last_trade_qty": _int(d.get("ltq"))}})
 
     def quotes(self, instrument_ids):
         out = {}

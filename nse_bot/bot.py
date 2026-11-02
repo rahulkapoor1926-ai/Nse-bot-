@@ -15,7 +15,7 @@ failure never turns into "position closed" or "price = 0".
 
 import logging
 
-from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, quotes, rr, scanner
+from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, orderflow, quotes, rr, scanner
 from .errors import NseBotError
 
 log = logging.getLogger("nse_bot")
@@ -193,6 +193,9 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
                  "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY"}
         qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(
             ctx, row["underlying"], q, row.get("spot"), now, getattr(c, "kind", "index_options"))
+        if getattr(c, "kind", "index_options") == "index_options":
+            cand["orderflow"], ofp = orderflow.for_entry(ctx, "orb", row["underlying"], c.option_type, now)
+            qp = qp + ofp
         verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
         cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
         out.append(cand)
