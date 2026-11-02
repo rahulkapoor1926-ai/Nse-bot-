@@ -148,6 +148,12 @@ jobs:
           echo "::notice title=Dashboard address (sign-in key only in Telegram)::$URL up until $END IST"
           echo "::notice title=Dashboard checks over the public address::healthz=$(curl -s -o /dev/null -w '%{http_code}' "$URL/healthz") no-key=$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/overview") wrong-key=$(curl -s -o /dev/null -w '%{http_code}' "$URL/login?k=wrong")$CHECKS"
           echo "::notice title=Backtest tab data::$(curl -s -b jar "$URL/api/study" | python3 -c "import json,sys; d=json.load(sys.stdin); i=(d.get('coverage') or {}).get('index') or {}; print('available', d.get('available'), 'generated', d.get('generated'), 'index 1m', i.get('first'), 'to', i.get('last'), i.get('sessions'), 'sessions; ORB signals', ((d.get('ORB') or {}).get('summary') or {}).get('signals'), 'Sweep signals', ((d.get('Sweep') or {}).get('summary') or {}).get('signals'), 'option P&L', (d.get('options_pnl') or {}).get('status'))")"
+          # Status file on the bot-control branch: address + checks, so the run can be verified while it is
+          # up. Never the sign-in key (that goes to Telegram only).
+          STUDY=$(curl -s -b jar "$URL/api/study" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({'available': d.get('available'), 'generated': d.get('generated'), 'coverage': d.get('coverage'), 'ORB_signals': ((d.get('ORB') or {}).get('summary') or {}).get('signals'), 'Sweep_signals': ((d.get('Sweep') or {}).get('summary') or {}).get('signals'), 'options_pnl': (d.get('options_pnl') or {}).get('status')}))")
+          URL="$URL" END="$END" CHECKS="$CHECKS" STUDY="$STUDY" RUN="$GITHUB_RUN_ID" python3 -c "import json,os,datetime; json.dump({'url': os.environ['URL'], 'up_until_ist': os.environ['END'], 'run_id': os.environ['RUN'], 'started_at': datetime.datetime.now().isoformat(timespec='seconds'), 'signed_in_checks': dict(x.split('=',1) for x in os.environ['CHECKS'].split()), 'study': json.loads(os.environ['STUDY']), 'sign_in_key': 'sent to Telegram only'}, open('ctl/dashboard.json','w'), indent=1)"
+          git -C ctl add dashboard.json && git -C ctl commit -q -m "dashboard up $END IST" && \
+            { for i in 1 2 3; do git -C ctl push -q origin HEAD:bot-control && break; git -C ctl pull -q --rebase origin bot-control; done; } || echo "status file not published"
           export URL END DASH_KEY="$KEY"      # GITHUB_ENV values only reach LATER steps
           python3 - <<'PY'
           import os
