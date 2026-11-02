@@ -179,7 +179,10 @@ class Web(unittest.TestCase):
         j = self.c.get("/api/study").get_json()
         self.assertTrue(j["available"])
         self.assertEqual(j["chart_days"], ["2026-10-29"])
-        self.assertNotIn("pnl", json.dumps(j).lower().replace("p&l", ""))
+        self.assertEqual(j["options_pnl"]["status"], "NOT AVAILABLE")   # no option P&L without real bid/ask
+        for fam in ("ORB", "Sweep"):
+            for sig in j[fam]["signals"]:
+                self.assertFalse({"pnl", "net_pnl", "premium", "fill"} & set(sig))
         ch = self.c.get("/api/study/chart?day=2026-10-29").get_json()
         self.assertEqual((ch["bars"], len(ch["signals"])), (bars, 1))
         self.assertFalse(self.c.get("/api/study/chart?day=2026-10-30").get_json()["available"])
