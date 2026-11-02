@@ -25,6 +25,7 @@ import urllib.request
 API = "https://api-t1.fyers.in/api/v3"
 DATA = "https://api-t1.fyers.in/data"
 INDEX = "NSE:NIFTY50-INDEX"
+UA = "Mozilla/5.0 (X11; Linux x86_64) nse-bot-readonly-check/1.0"
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 CHAIN_FIELDS = ("bid", "ask", "ltp", "oi", "volume", "strike_price", "option_type", "symbol")
 GREEK_FIELDS = ("delta", "gamma", "theta", "vega", "iv")
@@ -42,6 +43,8 @@ def call(method, url, header=None, body=None, params=None, http=None):
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")
     req.add_header("version", "3")
+    req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", UA)
     if header:
         req.add_header("Authorization", header)
     if http:
@@ -50,10 +53,13 @@ def call(method, url, header=None, body=None, params=None, http=None):
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status, json.loads(r.read().decode() or "{}")
     except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace")
         try:
-            return e.code, json.loads(e.read().decode() or "{}")
+            return e.code, json.loads(raw or "{}")
         except ValueError:
-            return e.code, {}
+            # not JSON (e.g. a firewall page): report its type and title only
+            title = raw.split("<title>")[1].split("</title>")[0] if "<title>" in raw else raw[:80]
+            return e.code, {"message": "non-JSON response (%s): %s" % (e.headers.get("Content-Type"), title.strip())}
     except (urllib.error.URLError, OSError, ValueError) as e:
         return "error", {"message": type(e).__name__}
 
