@@ -242,40 +242,70 @@ function sv(tag, attrs, parent) {
   return e;
 }
 var ST = { doc: null, day: null, chart: null };
+function table(parent, head, rows) {
+  var t = el("table", "t"), tr = el("tr");
+  head.forEach(function (h) { tr.appendChild(el("th", "", h)); });
+  t.appendChild(tr);
+  rows.forEach(function (r) {
+    var x = el("tr");
+    r.forEach(function (c) { var td = el("td", c && c.na ? "na" : "", c && c.na ? c.na : c); x.appendChild(td); });
+    t.appendChild(x);
+  });
+  parent.appendChild(t);
+}
 function renderStudy(j) {
   ST.doc = j;
-  var stats = clear($("study-stats")), list = clear($("study-list")), cov = clear($("study-cov"));
-  clear($("study-months"));
-  if (!j || !j.available) { empty(list, (j && j.reason) || "no study"); $("study-day").disabled = true; return; }
+  var list = clear($("study-list")), cov = clear($("study-cov")), rng = clear($("study-range")), tb = clear($("study-table")), au = clear($("study-audit"));
+  clear($("study-months")); clear($("study-month-table"));
+  if (!j || !j.available) { empty(list, (j && j.reason) || "no study"); $("pnl-status").textContent = "NOT AVAILABLE"; $("study-day").disabled = true; return; }
   if (j.note) $("study-note").textContent = j.note;
-  ["ORB", "Sweep"].forEach(function (f) {
-    var sm = (j[f] || {}).summary;
-    stat(stats, f + " signals", sm ? sm.signals : "not evaluable");
-    stat(stats, f + " CE / PE", sm ? sm.CE + " / " + sm.PE : "—");
-  });
-  var c = j.coverage || {}, ix = c.index || {}, fu = c.future || {};
+  var op = j.options_pnl || {};
+  $("pnl-status").textContent = op.status || "NOT AVAILABLE";
+  $("pnl-status").className = "big warn";
+  clear($("pnl-trades")).textContent = "simulated option trades: " + (op.simulated_option_trades === undefined ? 0 : op.simulated_option_trades);
+  $("pnl-reason").textContent = op.reason || "";
+  $("pnl-next").textContent = op.what_will_fill_it || "";
   function d(v) { return v === undefined || v === null ? "—" : v; }
-  cov.textContent = "Generated " + (j.generated || "—") + "\nSource: " + (j.source || "—") +
-    "\nIndex 1m: " + d(ix.sessions) + " sessions, " + d(ix.first) + " to " + d(ix.last) +
-    "\nFuture 1m (" + (fu.symbol || "none") + "): " + d(fu.sessions) + " sessions, " + d(fu.first) + " to " + d(fu.last) + (fu.note ? " (" + fu.note + ")" : "") +
-    "\nORB skipped: " + JSON.stringify((j.ORB || {}).skipped || {}) +
-    "\nSweep last failed rule: " + JSON.stringify((j.Sweep || {}).funnel_last_failed_rule || {}) +
-    "\nSweep not evaluable: " + JSON.stringify((j.Sweep || {}).not_evaluable || {});
+  var c = j.coverage || {}, ix = c.index || {}, i5 = c.index_5m_older || {}, fu = c.future || {}, rq = j.requested || {}, dl = j.index_daily || {};
+  item(rng, "Requested", d(rq.from) + " → " + d(rq.to), ["Study generated " + d(j.generated)]);
+  item(rng, "NIFTY index, daily", d(dl.sessions) + " sessions", [d(dl.first) + " → " + d(dl.last) + " (used for the trading calendar only)"]);
+  item(rng, "NIFTY index, 1-minute", d(ix.sessions) + " sessions", [d(ix.first) + " → " + d(ix.last) + " · " + d(ix.bars) + " bars · ORB and Sweep"]);
+  item(rng, "NIFTY index, 5-minute (older)", d(i5.sessions) + " sessions", [i5.sessions ? d(i5.first) + " → " + d(i5.last) + " · ORB only" : "FYERS served none older than the 1-minute history"]);
+  item(rng, "NIFTY future, 1-minute" + (fu.symbol ? " (" + fu.symbol + ")" : ""), d(fu.sessions) + " sessions", [fu.sessions ? d(fu.first) + " → " + d(fu.last) + " · needed by Sweep (volume)" : (fu.note || "none")]);
+  var NA = { na: "NOT AVAILABLE" };
+  var fams = ["ORB", "Sweep"].map(function (f) { return (j[f] || {}).summary || null; });
+  function cell(i, k) { var s = fams[i]; return s ? d(s[k]) : "not evaluable"; }
+  table(tb, ["", "ORB", "Sweep"], [
+    ["Sessions tested", cell(0, "sessions"), cell(1, "sessions")],
+    ["Signals", cell(0, "signals"), cell(1, "signals")],
+    ["CE / PE", fams[0] ? fams[0].CE + " / " + fams[0].PE : "—", fams[1] ? fams[1].CE + " / " + fams[1].PE : "—"],
+    ["Signal days %", cell(0, "signal_days_pct"), cell(1, "signal_days_pct")],
+    ["Option trades simulated", "0", "0"],
+    ["Wins / losses", NA, NA], ["SL hits", NA, NA], ["Win rate", NA, NA], ["Net P&L", NA, NA],
+    ["Max drawdown", NA, NA], ["Profit factor", NA, NA]]);
+  (j.fetch_audit || []).forEach(function (r) { item(au, r.series + " " + r.size + " · " + r.from + " → " + r.to, r.result === "ok" ? pill(r.bars + " bars", "ok") : pill("REFUSED", "bad"), r.result === "ok" ? [] : [r.result]); });
+  if (!(j.fetch_audit || []).length) empty(au, "no request log in this study file");
+  var cal = j.calendar_added || {}, calTxt = Object.keys(cal).map(function (y) { return y + ": " + Object.keys(cal[y].holidays || {}).length + " non-trading weekdays, " + cal[y].source; }).join("\n");
+  cov.textContent = "Source: " + d(j.source) +
+    "\nORB days skipped: " + JSON.stringify((j.ORB || {}).skipped || {}) +
+    "\nSweep last failed rule per day: " + JSON.stringify((j.Sweep || {}).funnel_last_failed_rule || {}) +
+    "\nSweep days not evaluable: " + JSON.stringify((j.Sweep || {}).not_evaluable || {}) +
+    "\nCalendar from observed sessions (years without an NSE circular in the bot):\n" + (calTxt || "none");
   monthBars(j);
   var all = [];
   ["ORB", "Sweep"].forEach(function (f) { ((j[f] || {}).signals || []).forEach(function (x) { all.push(x); }); });
   all.sort(function (a, b) { return String(b.signal_time).localeCompare(String(a.signal_time)); });
   if (!all.length) empty(list, "no signals in the covered period");
-  all.slice(0, 300).forEach(function (x) {
-    var it = item(list, x.day + " " + hhmm(x.signal_time) + " · " + x.family, pill(x.option_type, x.option_type === "CE" ? "ok" : "bad"),
-      ["Target strike " + num(x.target_strike, 0) + " · trigger " + num(x.trigger_close) + (x.regime ? " · " + x.regime : ""), "Tap to chart this day"]);
-    var last = list.lastChild;
-    last.style.cursor = "pointer";
-    last.addEventListener("click", function () { pickDay(x.day); window.scrollTo(0, $("study-day").getBoundingClientRect().top + window.scrollY - 80); });
+  all.slice(0, 400).forEach(function (x) {
+    item(list, x.day + " " + hhmm(x.signal_time) + " · " + x.family, pill(x.option_type, x.option_type === "CE" ? "ok" : "bad"),
+      ["Trigger " + num(x.trigger_close) + " · target strike " + num(x.target_strike, 0) + (x.entry_window ? " · entry " + hhmm(x.entry_window[0]) + "–" + hhmm(x.entry_window[1]) : ""),
+       "Data " + (x.data || "1m") + (x.regime ? " · regime " + x.regime : "") + " · option fill/exit: NOT AVAILABLE · tap to chart"]);
+    list.lastChild.style.cursor = "pointer";
+    list.lastChild.addEventListener("click", function () { pickDay(x.day); window.scrollTo(0, $("study-day").getBoundingClientRect().top + window.scrollY - 80); });
   });
   var sel = clear($("study-day"));
   sel.disabled = !(j.chart_days || []).length;
-  (j.chart_days || []).slice().reverse().forEach(function (d) { var o = el("option", "", d); o.value = d; sel.appendChild(o); });
+  (j.chart_days || []).slice().reverse().forEach(function (dd) { var o = el("option", "", dd); o.value = dd; sel.appendChild(o); });
   if (!ST.day && j.chart_days && j.chart_days.length) pickDay(j.chart_days[j.chart_days.length - 1]);
   else if (ST.day) sel.value = ST.day;
 }
@@ -287,6 +317,7 @@ function monthBars(j) {
   });
   keys = Object.keys(months).sort();
   if (!keys.length) return;
+  table($("study-month-table"), ["Month", "ORB", "Sweep", "Option P&L"], keys.slice().reverse().map(function (m) { return [m, months[m].ORB, months[m].Sweep, { na: "N/A" }]; }));
   var max = 1; keys.forEach(function (m) { max = Math.max(max, months[m].ORB, months[m].Sweep); });
   var W = 320, H = 140, top = 8, bot = 18, gw = (W - 20) / keys.length, bw = Math.max(2, Math.min(10, gw / 2 - 2));
   (max >= 4 ? [0, 0.5, 1] : [0, 1]).forEach(function (f) { var y = top + (H - top - bot) * (1 - f); sv("line", { x1: 20, x2: W, y1: y, y2: y, "class": "grid" }, svg); var t = sv("text", { x: 0, y: y + 3 }, svg); t.textContent = Math.round(max * f); });

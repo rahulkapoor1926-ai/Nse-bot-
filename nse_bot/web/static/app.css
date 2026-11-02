@@ -59,3 +59,11 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 .tip{min-height:18px;margin-top:6px}
 #study-day{width:100%}
 .tabs button{font-size:12px}
+table.t{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.t th,table.t td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t th{color:var(--muted);font-weight:600}
+td.na{color:var(--warn)}
+td.na{font-size:11px;white-space:nowrap}
+#pnl-status{font-size:24px}
+.pill{white-space:nowrap}

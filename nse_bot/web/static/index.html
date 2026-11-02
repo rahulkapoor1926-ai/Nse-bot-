@@ -64,10 +64,13 @@
   </section>
 
   <section id="tab-study" class="tab">
-    <div class="card warnbox small" id="study-note">Signal study: when the live ORB and Sweep rules would have fired on real NIFTY index bars. No option prices, fills or P&amp;L.</div>
-    <div class="grid2" id="study-stats"></div>
+    <div class="card warnbox small" id="study-note">Historical study of the live ORB and Sweep rules on real NIFTY index bars.</div>
+    <h2>Option P&amp;L</h2>
+    <div class="card"><div class="row between"><div class="big" id="pnl-status">—</div><span class="pill" id="pnl-trades">—</span></div><div class="small muted" id="pnl-reason"></div><div class="small muted" id="pnl-next"></div></div>
+    <h2>Date range and data coverage</h2><div id="study-range" class="list"></div>
+    <h2>Strategy results (signals)</h2><div id="study-table" class="card small"></div>
     <h2>Signals per month</h2>
-    <div class="card"><div class="legend small"><span class="sw orb"></span>ORB <span class="sw sweep"></span>Sweep</div><svg id="study-months" class="bars" viewBox="0 0 320 140" aria-label="Signals per month"></svg><div id="study-months-tip" class="small muted">Tap a bar for its numbers.</div></div>
+    <div class="card"><div class="legend small"><span class="sw orb"></span>ORB <span class="sw sweep"></span>Sweep</div><svg id="study-months" class="bars" viewBox="0 0 320 140" aria-label="Signals per month"></svg><div id="study-months-tip" class="small muted">Tap a bar for its numbers.</div><div id="study-month-table" class="small"></div></div>
     <h2>Day chart (5-minute NIFTY index)</h2>
     <div class="card">
       <select id="study-day" aria-label="Signal day"></select>
@@ -75,8 +78,9 @@
       <svg id="study-chart" class="candles" viewBox="0 0 360 220" preserveAspectRatio="none" aria-label="5-minute candles"></svg>
       <div id="chart-sig" class="small muted"></div>
     </div>
-    <h2>All signals</h2><div id="study-list" class="list"></div>
-    <h2>Coverage and rules</h2><div id="study-cov" class="card mono small"></div>
+    <h2>Signal-by-signal audit</h2><div id="study-list" class="list"></div>
+    <h2>Data requests (FYERS answers)</h2><div id="study-audit" class="list mono small"></div>
+    <h2>Rule funnel and calendar</h2><div id="study-cov" class="card mono small"></div>
   </section>
 
   <section id="tab-control" class="tab">
@@ -102,7 +106,7 @@
   <button data-tab="signals">Signals</button>
   <button data-tab="positions">Trades</button>
   <button data-tab="perf">P&amp;L</button>
-  <button data-tab="study">Study</button>
+  <button data-tab="study">Backtest</button>
   <button data-tab="control">Control</button>
 </nav>
 <script src="/static/app.js"></script>
