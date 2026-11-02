@@ -1,10 +1,10 @@
 {
   "bot": {
-    "heartbeat": "2026-11-02T13:06:40.721653+05:30",
+    "heartbeat": "2026-11-02T13:10:24.930584+05:30",
     "last_error": null,
-    "reported_status": "running",
+    "reported_status": "stopped",
     "stale_after_seconds": 180,
-    "status": "Running"
+    "status": "Stopped"
   },
   "by_strategy": {},
   "capital_inr": 20000.0,
@@ -28,7 +28,7 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-11-02T13:06:40.721653+05:30",
+  "generated_at": "2026-11-02T13:10:30.379191+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,
