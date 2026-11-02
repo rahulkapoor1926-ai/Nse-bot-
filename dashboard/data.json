@@ -1,6 +1,6 @@
 {
   "bot": {
-    "heartbeat": "2026-11-02T13:10:24.930584+05:30",
+    "heartbeat": "2026-11-02T20:22:47.847555+05:30",
     "last_error": null,
     "reported_status": "stopped",
     "stale_after_seconds": 180,
@@ -8,7 +8,7 @@
   },
   "by_strategy": {},
   "capital_inr": 20000.0,
-  "daily_loss_limit_inr": 500,
+  "daily_loss_limit_inr": 1000,
   "daily_profit_stop_inr": 2000,
   "data_source": "fyers",
   "days": [
@@ -28,7 +28,7 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-11-02T13:10:30.379191+05:30",
+  "generated_at": "2026-11-02T20:22:54.108496+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,
@@ -40,7 +40,7 @@
     "locked": false,
     "pnl": 0.0,
     "realized_pnl": 0.0,
-    "remaining_loss_inr": 500.0,
+    "remaining_loss_inr": 1000.0,
     "trades": 0
   },
   "totals": {

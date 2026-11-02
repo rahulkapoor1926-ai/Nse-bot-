@@ -1,0 +1,65 @@
+{
+  "books": [
+    "paper",
+    "paper-sweep"
+  ],
+  "capital_inr": 20000,
+  "evidence_rule": "per strategy: < 30 completed trades INSUFFICIENT EVIDENCE, 30-99 INITIAL EVIDENCE, 100+ STRONGER EVIDENCE; never a PASS",
+  "generated": "2026-11-02T20:22:49.005450+05:30",
+  "note": "paper trades on live FYERS prices only; no synthetic or artificial trades",
+  "regime_basis": "from daily bars of sessions before the trade day only: trend = 10-session efficiency ratio >= 0.40; high volatility = previous session's range in the top 20% of the 20 sessions before it",
+  "signals": {},
+  "strategies": {
+    "orb15-atm": {
+      "by_regime": {
+        "trend": {},
+        "volatility": {}
+      },
+      "family": "ORB",
+      "overall": {
+        "avg_loss": null,
+        "avg_win": null,
+        "costs": 0,
+        "evidence": "INSUFFICIENT EVIDENCE",
+        "expectancy": null,
+        "gross": 0,
+        "losses": 0,
+        "max_drawdown_inr": 0.0,
+        "max_drawdown_pct_of_capital": 0.0,
+        "net": 0,
+        "profit_factor": null,
+        "profit_factor_note": "no trades",
+        "sample": "INSUFFICIENT EVIDENCE: 0 completed trades; at least 30 are needed for an initial evaluation (100+ for stronger evidence). These numbers are not evidence.",
+        "trades": 0,
+        "win_rate_pct": null,
+        "wins": 0
+      }
+    },
+    "sweep-reversal": {
+      "by_regime": {
+        "trend": {},
+        "volatility": {}
+      },
+      "family": "Sweep",
+      "overall": {
+        "avg_loss": null,
+        "avg_win": null,
+        "costs": 0,
+        "evidence": "INSUFFICIENT EVIDENCE",
+        "expectancy": null,
+        "gross": 0,
+        "losses": 0,
+        "max_drawdown_inr": 0.0,
+        "max_drawdown_pct_of_capital": 0.0,
+        "net": 0,
+        "profit_factor": null,
+        "profit_factor_note": "no trades",
+        "sample": "INSUFFICIENT EVIDENCE: 0 completed trades; at least 30 are needed for an initial evaluation (100+ for stronger evidence). These numbers are not evidence.",
+        "trades": 0,
+        "win_rate_pct": null,
+        "wins": 0
+      }
+    }
+  },
+  "trades": []
+}
