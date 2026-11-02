@@ -1,0 +1,1 @@
+{"bias": "bullish", "decision": "SKIP", "evaluated_at": "2026-11-02T15:14:02.547364+05:30", "skip_reason": "confirmation: no 5m close beyond the sweep bar's high with a 50%+ body within 6 bars", "strategy": "sweep-reversal", "underlying": "NIFTY", "why": null}

@@ -1,0 +1,11 @@
+{
+  "orb15-atm|NIFTY|NSE:NIFTY26N0323300CE|2026-11-02 09:50:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old",
+  "orb15-atm|NIFTY|NSE:NIFTY26N0323350CE|2026-11-02 09:50:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old",
+  "orb15-equity|ITC|ITC|2026-11-02 09:45:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old; quote: stale: 236s old (max 10s)",
+  "orb15-equity|KOTAKBANK|KOTAKBANK|2026-11-02 10:40:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old; quote: stale: 236s old (max 10s)",
+  "orb15-equity|LT|LT|2026-11-02 09:55:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old; quote: stale: 240s old (max 10s)",
+  "orb15-equity|NIFTYBEES|NIFTYBEES|2026-11-02 09:45:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old",
+  "orb15-equity|RELIANCE|RELIANCE|2026-11-02 09:40:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old; quote: stale: 238s old (max 10s)",
+  "orb15-equity|SBIN|SBIN|2026-11-02 10:35:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old; quote: stale: 238s old (max 10s)",
+  "orb15-equity|TCS|TCS|2026-11-02 09:50:00+05:30": "REJECTED|after the entry window (14:30); signal is more than 2 hours old; quote: stale: 239s old (max 10s)"
+}

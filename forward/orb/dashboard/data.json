@@ -1,0 +1,49 @@
+{
+  "bot": {
+    "heartbeat": "2026-11-02T15:18:54.790657+05:30",
+    "last_error": null,
+    "reported_status": "running",
+    "stale_after_seconds": 180,
+    "status": "Running"
+  },
+  "by_strategy": {},
+  "capital_inr": 20000.0,
+  "daily_loss_limit_inr": 500,
+  "daily_profit_stop_inr": 2000,
+  "data_source": "fyers",
+  "days": [],
+  "decisions_today": [],
+  "equity_curve": [
+    {
+      "equity": 20000.0,
+      "time": null
+    }
+  ],
+  "errors": [],
+  "generated_at": "2026-11-02T15:18:54.790657+05:30",
+  "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
+  "ledger_integrity": "ok",
+  "ledger_records": 0,
+  "live_orders_enabled": false,
+  "open_positions": [],
+  "today": {
+    "date": "2026-11-02",
+    "lock_reason": null,
+    "locked": false,
+    "pnl": 0.0,
+    "realized_pnl": 0.0,
+    "remaining_loss_inr": 500.0,
+    "trades": 0
+  },
+  "totals": {
+    "available_inr": 20000.0,
+    "completed_trades": 0,
+    "deployed_inr": 0.0,
+    "realized_pnl": 0,
+    "total_pnl": 0.0,
+    "unrealized_pnl": 0.0,
+    "win_rate_pct": null,
+    "wins": 0
+  },
+  "trades": []
+}
