@@ -1,8 +1,8 @@
 {
- "url": "https://trial-sporting-join-flame.trycloudflare.com",
- "up_until_ist": "04:04",
- "run_id": "41487480251",
- "started_at": "2026-11-02T22:34:59",
+ "url": "https://competitors-mode-anticipated-rich.trycloudflare.com",
+ "up_until_ist": "05:09",
+ "run_id": "41497664976",
+ "started_at": "2026-11-02T23:39:27",
  "signed_in_checks": {
   "/": "200",
   "/static/app.js": "200",
@@ -18,7 +18,7 @@
  },
  "study": {
   "available": true,
-  "generated": "2026-11-02T22:11:30.468380+05:30",
+  "generated": "2026-11-02T23:06:06.889193+05:30",
   "coverage": {
    "future": {
     "bars": 93265,
