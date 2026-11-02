@@ -86,7 +86,11 @@ def main():
     spot = spot_on(TODAY)
     out["live_expiries"] = []
     for e in m.expiries("NIFTY", TODAY):
-        ce = m.pick("NIFTY", e, "CE", spot, 0)
+        try:
+            ce = m.pick("NIFTY", e, "CE", spot, 0)
+        except Exception as ex:                                       # noqa: BLE001
+            print("LIVE %s: no strike near spot (%s)" % (e, ex))
+            continue
         sym = syms.get(str(ce.instrument_id)) or syms.get(ce.instrument_id)
         st, s, msg_, c = hist(hdr, sym, "D", TODAY - dt.timedelta(days=365), TODAY)
         st2, s2, m2, c2 = hist(hdr, sym, "D", TODAY - dt.timedelta(days=730), TODAY - dt.timedelta(days=366))
