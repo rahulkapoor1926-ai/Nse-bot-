@@ -398,3 +398,31 @@ class Budget(unittest.TestCase):
         md.quotes([CE])                      # login + 2 depth = 3
         with self.assertRaises(DataError):
             md.quotes([CE])
+
+
+class ReceiptTime(unittest.TestCase):
+    """Found in the first live run: quotes fetched a few seconds after the cycle started
+    were flagged 'from the future'. Age is now measured from the later of the two times."""
+
+    def setUp(self):
+        self.cfg = synth.cfg("/tmp/x")
+
+    def test_quote_received_after_cycle_start_is_not_future(self):
+        from nse_bot import quotes as Q
+        q = quote(at=NOW + dt.timedelta(seconds=8))
+        q.extra = {"received_at": (NOW + dt.timedelta(seconds=9)).isoformat()}
+        self.assertEqual(Q.check(q, NOW, self.cfg, 65), [])
+
+    def test_age_is_never_understated(self):
+        from nse_bot import quotes as Q
+        q = quote(at=NOW)
+        q.extra = {"received_at": (NOW + dt.timedelta(seconds=30)).isoformat()}
+        self.assertTrue(any("stale" in p for p in Q.check(q, NOW, self.cfg, 65)))
+        bid, probs = Q.usable_for_exit(q, NOW, self.cfg)
+        self.assertIsNone(bid)
+
+    def test_genuinely_future_stamp_still_flagged(self):
+        from nse_bot import quotes as Q
+        q = quote(at=NOW + dt.timedelta(seconds=30))
+        q.extra = {"received_at": NOW.isoformat()}
+        self.assertTrue(any("future" in p for p in Q.check(q, NOW, self.cfg, 65)))

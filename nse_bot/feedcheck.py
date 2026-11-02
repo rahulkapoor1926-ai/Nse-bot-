@@ -8,7 +8,7 @@
 Any problem returned here blocks the entry; nothing is retried with another source.
 """
 
-from . import clock
+from . import quotes
 from .errors import NseBotError
 
 SPOT_TOLERANCE_PCT = 0.5
@@ -33,7 +33,7 @@ def entry_problems(ctx, underlying, q, ref_spot, now, kind="index_options"):
     if s.ts is None:
         p.append("spot quote has no last-trade time: freshness cannot be verified")
     else:
-        age = (clock.to_ist(now) - s.ts).total_seconds()
+        age = (quotes._reference(s, now) - s.ts).total_seconds()
         if age > ctx.cfg["max_quote_age_seconds"]:
             p.append("spot quote stale: %.0fs old (max %ss)" % (age, ctx.cfg["max_quote_age_seconds"]))
     if ref_spot:

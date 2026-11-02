@@ -73,6 +73,17 @@ def from_sahi(iid, d, source="sahi"):
     )
 
 
+def _reference(q, now, received_at=None):
+    """Age is measured from the later of the decision time and the moment the quote was
+    received: a quote fetched a few seconds after the cycle started is not 'from the future',
+    and its age is never understated."""
+    now = to_ist(now)
+    rec = received_at or (q.extra.get("received_at") if q is not None and q.extra else None)
+    if isinstance(rec, str):
+        rec = dt.datetime.fromisoformat(rec)
+    return max(now, to_ist(rec)) if rec is not None else now
+
+
 def check(q, now, cfg, lot_size, received_at=None, min_qty=None, need_oi=True, min_volume=None):
     """Return a list of problems; empty means usable for entry decisions.
 
@@ -80,10 +91,10 @@ def check(q, now, cfg, lot_size, received_at=None, min_qty=None, need_oi=True, m
     exchange timestamp and receipt only if the exchange timestamp is present; a quote
     with no timestamp at all is stale.
     """
-    now = to_ist(now)
     p = []
     if q is None:
         return ["no quote"]
+    now = _reference(q, now, received_at)
     for name in ("bid", "ask"):
         v = getattr(q, name)
         if v is None:
@@ -132,7 +143,7 @@ def usable_for_exit(q, now, cfg):
     if q.ts is None:
         p.append("no timestamp")
     else:
-        age = (to_ist(now) - q.ts).total_seconds()
+        age = (_reference(q, now) - q.ts).total_seconds()
         if age > cfg["max_quote_age_seconds"]:
             p.append("stale: %.0fs old" % age)
     return (None if p else q.bid), p

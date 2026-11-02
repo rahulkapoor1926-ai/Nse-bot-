@@ -47,7 +47,7 @@ RESOLUTION = {"1m": "1", "3m": "3", "5m": "5", "15m": "15", "30m": "30", "1h": "
 MAX_DAYS = {"D": 365}                 # per request; intraday uses 90 (FYERS allows up to 100)
 UA = "Mozilla/5.0 (X11; Linux x86_64) nse-bot-readonly/1.0"
 ENV_APP, ENV_SECRET, ENV_CODE, ENV_TOKEN = "FYERS_APP_ID", "FYERS_SECRET_ID", "FYERS_AUTH_CODE", "FYERS_ACCESS_TOKEN"
-PER_SECOND = 5                        # FYERS free plan: 5/s, 50/min, 5,000/day (data APIs)
+PER_SECOND = 5                        # FYERS free plan: 5/s, 50/min, 5,000/day (data APIs), per app
 UNITS_NOTE = ("FYERS: prices in rupees; theta is per day and vega per 1% IV in rupees; iv in percent "
               "(FYERS option-chain docs). Verify against live values before relying on them.")
 
@@ -90,7 +90,7 @@ class FyersReadOnly(MarketData):
     verifies_spot = True
 
     def __init__(self, env=os.environ, transport=urllib_transport, per_minute=20, sleep=time.sleep,
-                 monotonic=time.monotonic, per_day=2400):
+                 monotonic=time.monotonic, per_day=2400, per_second=PER_SECOND):
         self._app = (env.get(ENV_APP) or "").strip()
         self._secret = (env.get(ENV_SECRET) or "").strip()
         self._code = (env.get(ENV_CODE) or "").strip()
@@ -100,7 +100,7 @@ class FyersReadOnly(MarketData):
         if not self._token and not (self._secret and self._code):
             raise ConfigError("FYERS needs %s, or %s and today's %s" % (ENV_TOKEN, ENV_SECRET, ENV_CODE))
         self._transport, self._sleep, self._mono = transport, sleep, monotonic
-        self._per_minute, self._per_day = int(per_minute), int(per_day)
+        self._per_minute, self._per_day, self._per_second = int(per_minute), int(per_day), int(per_second)
         self._candle_cache = {}
         self._calls = []
         self.calls_made = 0
@@ -125,7 +125,7 @@ class FyersReadOnly(MarketData):
             now = self._mono()
             self._calls = [t for t in self._calls if now - t < 60]
             last_sec = [t for t in self._calls if now - t < 1]
-            if len(last_sec) >= PER_SECOND:
+            if len(last_sec) >= self._per_second:
                 self._sleep(1 - (now - min(last_sec)) + 0.01)
             elif len(self._calls) >= self._per_minute:
                 self._sleep(60 - (now - min(self._calls)) + 0.01)

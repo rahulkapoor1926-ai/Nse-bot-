@@ -197,7 +197,8 @@ def _fyers_ctx(a, cfg, cal, cm):
             LOG.warning("stocks/ETFs unavailable on FYERS this session: %s", e)
             print("stocks/ETFs unavailable on FYERS this session: %s" % e, file=sys.stderr)
     md = fyers.FyersReadOnly(per_minute=getattr(a, "max_calls_per_minute", 20),
-                             per_day=getattr(a, "max_calls_per_day", 2400)).bind(m, fyers.load_symbols(path))
+                             per_day=getattr(a, "max_calls_per_day", 2400),
+                             per_second=getattr(a, "max_calls_per_second", 5)).bind(m, fyers.load_symbols(path))
     print("market data: FYERS (read-only), %d instruments" % len(md.symbols))
     return cfg, cal, cm, m, md
 
@@ -389,6 +390,8 @@ def build_parser():
         s.add_argument("--refresh-master", action="store_true")
         s.add_argument("--max-calls-per-minute", type=int, default=20,
                        help="FYERS only: this process's share of the 50/minute data limit")
+        s.add_argument("--max-calls-per-second", type=int, default=5,
+                       help="FYERS only: this process's share of the 5/second data limit")
         s.add_argument("--max-calls-per-day", type=int, default=2400,
                        help="FYERS only: this process's share of the 5,000/day data limit")
         if name == "paper":
