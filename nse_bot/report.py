@@ -14,7 +14,7 @@ from .errors import StateCorrupt
 BANNER = "SIMULATED RESULTS (paper trading / historical backtest). No real orders. Not evidence of future profit."
 
 
-def build(state_dir):
+def build(state_dir, risk_dir=None):
     out = {"label": BANNER, "ledger": {}, "risk_days": [], "gate": []}
     led = Ledger(state_dir)
     try:
@@ -32,7 +32,7 @@ def build(state_dir):
         out["ledger"]["by_strategy"] = dashboard.by_strategy(dashboard._trades(fills, {})[0])
     except StateCorrupt as e:
         out["ledger"]["integrity"] = "CORRUPT: %s" % e
-    for path in sorted(glob.glob(os.path.join(state_dir, "risk", "*.json"))):
+    for path in sorted(glob.glob(os.path.join(risk_dir or state_dir, "risk", "*.json"))):
         try:
             d = state.read_json(path)
             out["risk_days"].append({"date": d["date"], "realized_pnl": d["realized_pnl"], "trades": d["trades"],

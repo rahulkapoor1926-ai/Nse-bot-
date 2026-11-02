@@ -138,13 +138,13 @@ def cmd_gate(a):
 
 def cmd_risk_status(a):
     cfg = config.load(a.config)
-    book = risk.RiskBook.open(cfg["state_dir"], _now(a).date())
+    book = risk.RiskBook.open(cfg["risk_dir"], _now(a).date(), owner=cfg["state_dir"])
     print(json.dumps(dict(book.doc, remaining_loss_inr=book.remaining_loss(cfg), warning=risk.WARNING), indent=2))
 
 
 def cmd_report(a):
     cfg = config.load(a.config)
-    print(report.render(report.build(cfg["state_dir"])))
+    print(report.render(report.build(cfg["state_dir"], cfg["risk_dir"])))
 
 
 def cmd_news(a):
@@ -268,7 +268,8 @@ def cmd_paper(a):
         if first:
             print("P&L notifications: %s" % nt.channel)
             first = False
-        book = risk.RiskBook.open(cfg["state_dir"], now.date())
+        # shared by every strategy process whose config names the same risk_dir (ORB + Sweep)
+        book = risk.RiskBook.open(cfg["risk_dir"], now.date(), owner=cfg["state_dir"])
         al = Alerts(cfg["state_dir"], now.date())
         ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest, nt)
         err = None
