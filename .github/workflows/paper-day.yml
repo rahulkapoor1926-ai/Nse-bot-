@@ -37,6 +37,7 @@ jobs:
       SAHI_KEY_ID: ${{ secrets.SAHI_KEY_ID }}
       SAHI_KEY_SECRET: ${{ secrets.SAHI_KEY_SECRET }}
       SAHI_TOTP: ${{ secrets.SAHI_TOTP }}
+      FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -68,7 +69,7 @@ jobs:
           fi
           # broker/exchange data, logs and full decision reports (quotes, candles) never
           # go to the public branch; only one-line decision summaries do
-          printf 'instruments.csv\n*.part\nrecordings/\nsweep-recordings/\nlogs/\ndecisions/\neod-raw/\n.tmp-*\n' > state/.gitignore
+          printf 'instruments.csv\ninstruments-fyers.csv*\n*.part\nrecordings/\nsweep-recordings/\nlogs/\ndecisions/\neod-raw/\n.tmp-*\n' > state/.gitignore
           git -C state rm -r -q --cached --ignore-unmatch instruments.csv recordings sweep-recordings logs decisions sweep/logs sweep/decisions
           mkdir -p state/recordings state/sweep-recordings state/logs state/sweep
 
@@ -78,6 +79,8 @@ jobs:
         with:
           path: |
             state/instruments.csv
+            state/instruments-fyers.csv
+            state/instruments-fyers.csv.symbols.json
             state/recordings
             state/sweep-recordings
             state/logs
@@ -91,8 +94,61 @@ jobs:
         if: steps.day.outputs.trading == 'true'
         run: scripts/test_all.sh
 
-      - name: Paper trade and record
+      - name: Data source
         if: steps.day.outputs.trading == 'true'
+        id: src
+        run: echo "source=$(python3 -c "import json; print(json.load(open('config/paper.json'))['data_source'])")" >> "$GITHUB_OUTPUT"
+
+      - name: FYERS login (token masked, kept only for this job)
+        if: steps.day.outputs.trading == 'true' && steps.src.outputs.source == 'fyers'
+        env:
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from nse_bot.broker import fyers
+          md = fyers.FyersReadOnly()
+          info = md.login()
+          print("::add-mask::%s" % md._token)
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write("FYERS_ACCESS_TOKEN=%s\n" % md._token)
+          print("FYERS login ok (token masked); refresh token received: %s" % info["refresh_token_received"])
+          PY
+
+      - name: Paper trade (FYERS data)
+        if: steps.day.outputs.trading == 'true' && steps.src.outputs.source == 'fyers'
+        env:
+          UNTIL_INPUT: ${{ github.event.inputs.until }}
+        run: |
+          if [ -n "$UNTIL_INPUT" ]; then UNTIL="$UNTIL_INPUT";
+          elif [ "$(date +%H)" -lt 12 ]; then UNTIL=12:15; else UNTIL=15:35; fi
+          echo "running until $UNTIL IST on FYERS data (free plan: 50 calls/min, 5,000/day shared)"
+          ( while sleep 300; do scripts/save_state.sh || true; done ) &
+          SAVER=$!
+          # recorders are not run on FYERS: its call budget is kept for trading decisions
+          python3 -m nse_bot --config config/paper.json paper --refresh-master --until "$UNTIL" --every 30 \
+            --max-calls-per-minute 22 --max-calls-per-day 2400 \
+            --strategy config/strategies/orb15-equity.example.json \
+            --strategy config/strategies/orb15.example.json &
+          ORB=$!
+          for i in $(seq 1 60); do [ -s state/instruments-fyers.csv.symbols.json ] && break; sleep 5; done
+          SPAPER=0
+          python3 -m nse_bot --config config/paper-sweep.json paper --master state/instruments-fyers.csv \
+            --until "$UNTIL" --every 30 --max-calls-per-minute 22 --max-calls-per-day 2400 \
+            --strategy config/strategies/sweep.example.json || SPAPER=$?
+          PAPER=0
+          wait $ORB || PAPER=$?
+          kill $SAVER 2>/dev/null || true
+          for c in config/paper.json config/paper-sweep.json; do
+            python3 -m nse_bot --config $c risk-status || true
+            python3 -m nse_bot --config $c report || true
+          done
+          echo "ORB paper exit $PAPER, sweep paper exit $SPAPER"
+          [ "$PAPER" -eq 0 ] && [ "$SPAPER" -eq 0 ]
+
+      - name: Paper trade and record (SAHI data)
+        if: steps.day.outputs.trading == 'true' && steps.src.outputs.source == 'sahi'
         env:
           UNTIL_INPUT: ${{ github.event.inputs.until }}
         run: |
@@ -142,6 +198,8 @@ jobs:
         with:
           path: |
             state/instruments.csv
+            state/instruments-fyers.csv
+            state/instruments-fyers.csv.symbols.json
             state/recordings
             state/sweep-recordings
             state/logs

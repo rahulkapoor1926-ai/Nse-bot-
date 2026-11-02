@@ -137,7 +137,7 @@ def build(state_dir, cfg, now):
     doc = {"label": LABEL, "generated_at": now.isoformat(), "capital_inr": capital,
            "daily_loss_limit_inr": cfg["max_daily_loss_inr"],
            "daily_profit_stop_inr": cfg["daily_profit_stop_inr"],
-           "live_orders_enabled": False, "errors": []}
+           "live_orders_enabled": False, "errors": [], "data_source": cfg.get("data_source")}
     names = state.read_json(os.path.join(_dir(state_dir), "names.json"), missing={}) or {}
     try:
         live = state.read_json(os.path.join(_dir(state_dir), "live.json"), missing={}) or {}

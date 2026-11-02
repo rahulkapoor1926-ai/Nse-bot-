@@ -1,6 +1,8 @@
 # Switching market data from SAHI to FYERS: implementation plan
 
-Status: **proposal, waiting for jojo's approval. No bot code has been changed.**
+Status: **approved by jojo on 2026-11-02 and implemented. Automatic daily runs stay off until jojo approves them.**
+
+Deviations from the plan text: the spot check compares the FYERS index quote (last-trade time from /data/depth, max 10 s old) with the price the signal was computed from, tolerance 0.5%; recorders are not run on FYERS, to keep inside the 5,000 calls/day limit; candles are cached until the next bar is due for the same reason.
 
 Requested on 2026-11-02. FYERS read-only access was verified the same day (GitHub
 Actions run 41403687715): login, NIFTY spot, option chain with bid/ask/OI/volume/Greeks/IV,

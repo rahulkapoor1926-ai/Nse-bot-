@@ -286,7 +286,8 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
     var errs = (d.errors || []).slice();
     if (d.bot && d.bot.last_error) errs.unshift("Last bot error: " + d.bot.last_error);
     el("errors").innerHTML = errs.map(function (e) { return '<div class="err">' + esc(e) + '</div>'; }).join("");
-    el("updated").textContent = "Data written by the bot at " + when(d.generated_at) + " IST. Ledger " + d.ledger_integrity + ".";
+    el("updated").textContent = "Data written by the bot at " + when(d.generated_at) + " IST from " +
+      (d.data_source ? d.data_source.toUpperCase() : "unknown") + " market data. Ledger " + d.ledger_integrity + ".";
   }
 
   function load() {

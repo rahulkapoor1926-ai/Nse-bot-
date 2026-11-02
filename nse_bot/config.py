@@ -37,6 +37,13 @@ def _const(value):
     return check
 
 
+def _choice(*allowed):
+    def check(key, v):
+        if v not in allowed:
+            raise ConfigError("%s must be one of %s, got %r" % (key, ", ".join(allowed), v))
+    return check
+
+
 def _hhmm(key, v):
     if not isinstance(v, str) or not HHMM.match(v):
         raise ConfigError("%s must be HH:MM (24-hour IST), got %r" % (key, v))
@@ -120,6 +127,7 @@ SCHEMA = {
     "equity_min_volume_today": _num(lo=0, integer=True),
     "gate_allow_estimated_spread": _bool,
     "live_orders_enabled": _const(False),
+    "data_source": _choice("sahi", "fyers"),
 }
 
 

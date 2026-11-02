@@ -117,6 +117,10 @@ def validate_strategy(s):
     miss = [k for k in need if k not in s]
     if miss:
         raise DataError("strategy is missing %s" % ", ".join(miss))
+    off = s["strike_offset"]
+    if s.get("instrument") == "index_option" and (not isinstance(off, int) or isinstance(off, bool) or off > 0):
+        raise DataError("strike_offset %r would select an OTM strike or is not a whole number: only 0 (ATM) "
+                        "or negative (ITM) is allowed" % (off,))
     if s["instrument"] not in INSTRUMENTS:
         raise DataError("strategy instrument must be one of %s" % ", ".join(INSTRUMENTS))
     if s["pattern"] not in PATTERNS:

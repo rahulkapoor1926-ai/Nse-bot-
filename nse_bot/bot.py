@@ -15,7 +15,7 @@ failure never turns into "position closed" or "price = 0".
 
 import logging
 
-from . import budget, clock, entry, exit as exit_mod, gate, quotes, scanner
+from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, quotes, scanner
 from .errors import NseBotError
 
 log = logging.getLogger("nse_bot")
@@ -167,8 +167,9 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
                              ctx.risk.remaining_loss(ctx.cfg))
         order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
                  "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY"}
-        verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus,
-                                 quotes.check_for(c, q, now, ctx.cfg), sizing, plan)
+        qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(
+            ctx, row["underlying"], q, row.get("spot"), now, getattr(c, "kind", "index_options"))
+        verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
         cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
         out.append(cand)
         if verdict["verdict"] != "PASS":
@@ -176,7 +177,7 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
             "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
             "invalidate_below": row["signal"]["invalidate_below"],
-            "invalidate_above": row["signal"]["invalidate_above"]})
+            "invalidate_above": row["signal"]["invalidate_above"], "data_source": ctx.cfg.get("data_source")})
         cand["fill"] = res
         if res["status"] == "FAILED":
             ctx.alerts.emit("system_error", "entryfail-" + key, "paper entry failed: %s" % res["reason"], now)

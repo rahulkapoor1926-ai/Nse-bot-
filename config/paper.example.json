@@ -3,12 +3,10 @@
   "timezone": "Asia/Kolkata",
   "currency": "INR",
   "underlyings": [
-    "NIFTY",
-    "BANKNIFTY"
+    "NIFTY"
   ],
   "index_names": {
-    "NIFTY": "Nifty 50",
-    "BANKNIFTY": "Nifty Bank"
+    "NIFTY": "Nifty 50"
   },
   "capital_inr": 20000,
   "max_daily_loss_inr": 500,
@@ -49,5 +47,6 @@
   "equity_min_top_value_inr": 200000,
   "equity_min_volume_today": 200000,
   "gate_allow_estimated_spread": true,
-  "live_orders_enabled": false
+  "live_orders_enabled": false,
+  "data_source": "fyers"
 }

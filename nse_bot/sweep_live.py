@@ -10,7 +10,7 @@ Data per underlying (read-only SAHI calls, fetched once per new closed minute):
 
 import datetime as dt
 
-from . import budget, clock, contract_select, decisions, entry, gate, quotes, scanner, sweep
+from . import budget, clock, contract_select, decisions, entry, feedcheck, gate, quotes, scanner, sweep
 from .errors import NseBotError
 
 _CACHE = {}
@@ -71,6 +71,7 @@ def look(ctx, now, strategy):
 
         rep = sweep.evaluate(strategy, u, now, d["u1"], d["u1h"], d["u1d"], d["f1"], get_chain, ctx.master, ctx.cfg)
         rep["future"] = d["future"] or "no current-month index future in the scrip master"
+        rep["data_source"] = ctx.cfg.get("data_source")
         rep["raw_refs"] = {"index_instrument_id": d["iid"], "future": d["future"], "expiry": str(expiry),
                            "windows": {"1m": len(d["u1"]), "1h": len(d["u1h"]), "1d": len(d["u1d"]),
                                        "fut1m": len(d["f1"])},
@@ -117,7 +118,8 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy))
     order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
              "signal_known_at": known.isoformat(), "side": "BUY"}
-    verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, quotes.check_for(c, q, now, ctx.cfg), sizing, plan)
+    qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(ctx, u, q, signal["trigger_close"], now)
+    verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
     ex.update({"gate": gstatus, "sizing": {k: v for k, v in sizing.items() if k != "warning"},
                "risk": verdict["verdict"], "risk_reasons": verdict["reasons"], "plan": plan})
     cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
@@ -127,7 +129,7 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
         "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
         "invalidate_below": signal["invalidate_below"], "invalidate_above": signal["invalidate_above"],
-        "decision_report": rep["evaluated_at"]})
+        "decision_report": rep["evaluated_at"], "data_source": ctx.cfg.get("data_source")})
     ex["fill"] = {k: v for k, v in res.items() if k != "charges"}
     if res["status"] == "FAILED":
         ctx.alerts.emit("system_error", "entryfail-" + key, "paper entry failed: %s" % res["reason"], now)

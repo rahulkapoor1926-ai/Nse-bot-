@@ -34,7 +34,7 @@ from . import (analyst, clock, config, costs as costs_mod, dashboard, events as 
 from .alerts import Alerts
 from .backtest import engine, equity_engine, metrics
 from .data import store
-from .errors import ConfigError, NseBotError
+from .errors import ConfigError, DataError, NseBotError
 
 LOG = logging.getLogger("nse_bot")
 
@@ -166,8 +166,11 @@ def cmd_pelosi(a):
 
 
 def _sahi_ctx(a):
-    from .broker import sahi
+    """Market-data context for the session's single configured source (never mixed)."""
     cfg, cal, cm = _common(a.config)
+    if cfg["data_source"] == "fyers":
+        return _fyers_ctx(a, cfg, cal, cm)
+    from .broker import sahi
     if not os.path.exists(a.master) or a.refresh_master:
         n = sahi.download_scrip_master(a.master)
         LOG.info("scrip master downloaded: %d bytes", n)
@@ -175,6 +178,27 @@ def _sahi_ctx(a):
     if {"equity", "etf"} & set(cfg["instruments_enabled"]):
         m.bind_universe(instruments.load_universe(cfg["equity_universe_file"]))
     md = sahi.SahiReadOnly()
+    return cfg, cal, cm, m, md
+
+
+def _fyers_ctx(a, cfg, cal, cm):
+    from .broker import fyers
+    path = "state/instruments-fyers.csv" if a.master == "state/instruments.csv" else a.master
+    if not os.path.exists(path) or a.refresh_master:
+        info = fyers.build_master(path, cfg["underlyings"], cfg["index_names"],
+                                  with_cash=bool({"equity", "etf"} & set(cfg["instruments_enabled"])))
+        LOG.info("FYERS symbol master written: %s", info)
+    m = instruments.load(path, cfg["underlyings"], list(cfg["index_names"].values()))
+    if {"equity", "etf"} & set(cfg["instruments_enabled"]):
+        try:
+            m.bind_universe(instruments.load_universe(cfg["equity_universe_file"]))
+        except DataError as e:
+            # stocks/ETFs are then unavailable this session (no signals), never filled from SAHI
+            LOG.warning("stocks/ETFs unavailable on FYERS this session: %s", e)
+            print("stocks/ETFs unavailable on FYERS this session: %s" % e, file=sys.stderr)
+    md = fyers.FyersReadOnly(per_minute=getattr(a, "max_calls_per_minute", 20),
+                             per_day=getattr(a, "max_calls_per_day", 2400)).bind(m, fyers.load_symbols(path))
+    print("market data: FYERS (read-only), %d instruments" % len(md.symbols))
     return cfg, cal, cm, m, md
 
 
@@ -363,6 +387,10 @@ def build_parser():
         s = sub.add_parser(name)
         s.add_argument("--master", default="state/instruments.csv")
         s.add_argument("--refresh-master", action="store_true")
+        s.add_argument("--max-calls-per-minute", type=int, default=20,
+                       help="FYERS only: this process's share of the 50/minute data limit")
+        s.add_argument("--max-calls-per-day", type=int, default=2400,
+                       help="FYERS only: this process's share of the 5,000/day data limit")
         if name == "paper":
             s.add_argument("--strategy", required=True, action="append",
                            help="repeat to run several strategies; tried in the order given")

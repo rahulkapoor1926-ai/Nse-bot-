@@ -26,7 +26,12 @@ def _px(v):
 
 
 def parse_chain(doc):
-    """SAHI /v1/marketdata/optionchain -> {"spot", "legs": [...]}; prices in rupees."""
+    """SAHI /v1/marketdata/optionchain -> {"spot", "legs": [...]}; prices in rupees.
+    A FYERS chain arrives already in this shape ("format": "legs") and is passed through."""
+    if isinstance(doc, dict) and doc.get("format") == "legs":
+        if not isinstance(doc.get("legs"), list):
+            raise DataError("option chain has no legs")
+        return doc
     if not isinstance(doc, dict) or "strikes" not in doc:
         raise DataError("option chain response has no strikes")
     legs = []
