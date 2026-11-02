@@ -1,0 +1,22 @@
+# Read-only check of free NSE end-of-day file access from GitHub's servers.
+# No credentials, no trading. Run by hand from the Actions tab.
+name: eod-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Trading days to check, YYYY-MM-DD separated by spaces"
+        required: true
+        default: "2026-10-30 2026-10-29"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 scripts/probe_eod.py ${{ github.event.inputs.days }}
