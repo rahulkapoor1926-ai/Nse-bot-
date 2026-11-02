@@ -67,3 +67,4 @@ td.na{color:var(--warn)}
 td.na{font-size:11px;white-space:nowrap}
 #pnl-status{font-size:24px}
 .pill{white-space:nowrap}
+h2.sec{color:var(--acc);font-size:14px;margin-top:26px;border-top:1px solid var(--line);padding-top:14px}

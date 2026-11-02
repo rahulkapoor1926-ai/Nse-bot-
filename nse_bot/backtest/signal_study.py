@@ -141,6 +141,7 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
     days = list(_sessions(u1))
     out, funnel, not_eval = [], collections.Counter(), collections.Counter()
     furthest = collections.Counter()           # per day: the furthest rule any minute of the day failed at
+    days_audit = []
     order = {r: i for i, r in enumerate(sweep.RULES)}
     for di, day in enumerate(days):
         if not cal.is_trading_day(day) or di < 6:
@@ -158,6 +159,7 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
         final = None
         found = None
         best = None
+        best_rep = None
         while t <= last:
             now = t
             t += dt.timedelta(minutes=1)
@@ -170,7 +172,7 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
             why = rep.get("skip_reason") or ""
             st_ = why.split(":")[0]
             if st_ in order and (best is None or order[st_] > order[best]):
-                best = st_
+                best, best_rep = st_, rep
             if why.startswith("data_future") or why.startswith("data_underlying"):
                 continue
             if why.startswith("contract: no option chain source"):
@@ -184,6 +186,7 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
             else:
                 funnel[stage] += 1
                 furthest[best or stage] += 1
+                days_audit.append(_day_audit(day, best_rep or final))
             continue
         plan = found.get("underlying_plan") or {}
         spot = plan.get("spot") or (found.get("liquidity") or {}).get("reclaim_close")
@@ -196,9 +199,226 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
                     "structure": found.get("structure"), "underlying_plan": plan, **reg})
         funnel["SIGNAL"] += 1
         furthest["SIGNAL"] += 1
+        days_audit.append(_day_audit(day, found))
     return {"signals": out, "sessions": len(days), "funnel_last_failed_rule": dict(funnel),
             "furthest_rule_failed": {k: furthest[k] for k in list(sweep.RULES) + ["SIGNAL"] if furthest[k]},
+            "rule_audit": rule_audit(days_audit), "day_audit": days_audit,
             "not_evaluable": dict(not_eval)}
+
+
+def _day_audit(day, rep):
+    """The day's furthest-reaching evaluation: when, each rule's status, and why it stopped."""
+    rep = rep or {}
+    return {"day": day.isoformat(), "evaluated_at": rep.get("evaluated_at"), "skip_reason": rep.get("skip_reason"),
+            "rules": {r["rule"]: r["status"] for r in rep.get("rules") or []}}
+
+
+def rule_audit(days_audit):
+    """Rule by rule over the evaluated days: how many days reached the rule, passed it, failed it."""
+    out = []
+    for name in sweep.RULES:
+        st_ = [d["rules"].get(name) for d in days_audit]
+        passed, failed = st_.count("pass"), st_.count("fail")
+        out.append({"rule": name, "days_reached": passed + failed, "passed": passed, "failed": failed})
+    return out
+
+
+WEEKLY_MONTH = "123456789OND"
+MONTHS = "JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split()
+
+
+def nifty_expiry(day, cal):
+    """NIFTY weekly expiry on or after `day`: Tuesday (NSE, from 1 Sep 2025), moved to the previous
+    trading day when that Tuesday is a holiday. Derived from the exchange rule, labelled as derived."""
+    t = day + dt.timedelta(days=(1 - day.weekday()) % 7)
+    while True:
+        e = t
+        while not cal.is_trading_day(e):
+            e -= dt.timedelta(days=1)
+        if e >= day:
+            return e
+        t += dt.timedelta(days=7)
+
+
+def option_symbol(day, option_type, strike, cal):
+    """FYERS ticker of the contract the ORB bot would have aimed at (nearest expiry, min_days_to_expiry 0)."""
+    e = nifty_expiry(day, cal)
+    nxt = nifty_expiry(e + dt.timedelta(days=1), cal)
+    monthly = nxt.month != e.month
+    if monthly:
+        sym = "NSE:NIFTY%02d%s%d%s" % (e.year % 100, MONTHS[e.month - 1], strike, option_type)
+    else:
+        sym = "NSE:NIFTY%02d%s%02d%d%s" % (e.year % 100, WEEKLY_MONTH[e.month - 1], e.day, strike, option_type)
+    return {"symbol": sym, "expiry": e.isoformat(), "expiry_kind": "monthly" if monthly else "weekly",
+            "strike": strike, "option_type": option_type,
+            "basis": "derived: nearest NIFTY expiry (Tuesday, previous trading day if a holiday); ATM strike "
+                     "nearest 50 to the signal's trigger close; strike_offset from the strategy"}
+
+
+INDEX_OUTCOME_NOTE = (
+    "INDEX-BASED, NOT OPTION P&L. The live ORB stop (-20% of premium) and target (2.5R on premium) are option "
+    "prices and cannot be read from the index. This analysis uses the ORB signal's own index levels instead: "
+    "stop = the opening-range midpoint (patterns.py invalidate level), target = entry +/- 2.5 x the index "
+    "distance to that stop (the strategy's target_r), time exit at flat_by (expiry_day_flat_by on expiry day). "
+    "Entry = open of the first 1-minute bar of the entry window. Hits are 1-minute high/low touches; a bar touching "
+    "both is AMBIGUOUS. Points are NIFTY index points, not rupees.")
+
+
+def index_outcomes(u1, signals, strategy, cfg, cal):
+    """Index-based outcome of each ORB signal on the real 1-minute bars after its entry window opens."""
+    tr = float(strategy["target_r"])
+    by_day = _sessions(u1)
+    out = []
+    for s in signals:
+        if s.get("family") != "ORB":
+            continue
+        day = dt.date.fromisoformat(s["day"])
+        bars = by_day.get(day, [])
+        start = dt.datetime.fromisoformat(s["entry_window"][0])
+        expiry = nifty_expiry(day, cal)
+        flat = clock.at(day, cfg["expiry_day_flat_by"] if expiry == day else cfg["flat_by"])
+        row = {"day": s["day"], "signal_time": s["signal_time"], "option_type": s["option_type"],
+               "flat_by": flat.isoformat(), "expiry": expiry.isoformat()}
+        after = [b for b in bars if start <= b[0] and b[0] + dt.timedelta(minutes=1) <= flat]
+        if not after:
+            out.append(dict(row, outcome="NO DATA", reason="no 1-minute bars between the entry window and the time exit"))
+            continue
+        ce = s["option_type"] == "CE"
+        entry = after[0][1]
+        stop = s["invalidate_below"] if ce else s["invalidate_above"]
+        risk = (entry - stop) if ce else (stop - entry)
+        row.update(entry_time=after[0][0].isoformat(), entry=entry, stop=round(stop, 2))
+        if risk <= 0:
+            out.append(dict(row, outcome="INVALID", reason="entry already beyond the stop level"))
+            continue
+        target = entry + tr * risk if ce else entry - tr * risk
+        row.update(target=round(target, 2), risk_points=round(risk, 2))
+        res = None
+        for b in after:
+            hit_t = b[2] >= target if ce else b[3] <= target
+            hit_s = b[3] <= stop if ce else b[2] >= stop
+            if hit_t and hit_s:
+                res = ("AMBIGUOUS", b[0], None, "target and stop both inside the %s bar" % b[0].strftime("%H:%M"))
+            elif hit_s:
+                res = ("SL", b[0], stop, None)
+            elif hit_t:
+                res = ("TARGET", b[0], target, None)
+            if res:
+                break
+        if res is None:
+            last = after[-1]
+            res = ("TIME EXIT", last[0] + dt.timedelta(minutes=1), last[4], "flat at %s" % flat.strftime("%H:%M"))
+        kind, when, price, why = res
+        row.update(outcome=kind, exit_time=when.isoformat(), exit=None if price is None else round(price, 2),
+                   reason=why, minutes_held=int((when - after[0][0]).total_seconds() // 60))
+        if price is not None:
+            pts = (price - entry) if ce else (entry - price)
+            row.update(index_points=round(pts, 2), r_multiple=round(pts / risk, 2))
+        out.append(row)
+    return out
+
+
+def summarise_outcomes(rows):
+    kinds = ("TARGET", "SL", "TIME EXIT", "AMBIGUOUS", "INVALID", "NO DATA")
+    tot = {k: sum(1 for r in rows if r["outcome"] == k) for k in kinds}
+    by_month = collections.OrderedDict()
+    for r in sorted(rows, key=lambda x: x["day"]):
+        m = by_month.setdefault(r["day"][:7], dict({k: 0 for k in kinds}, signals=0, index_points=0.0))
+        m["signals"] += 1
+        m[r["outcome"]] += 1
+        m["index_points"] = round(m["index_points"] + (r.get("index_points") or 0.0), 2)
+    resolved = tot["TARGET"] + tot["SL"]
+    return {"note": INDEX_OUTCOME_NOTE, "signals": len(rows), "totals": tot,
+            "target_hit_pct_of_target_or_sl": round(100.0 * tot["TARGET"] / resolved, 1) if resolved else None,
+            "index_points_total": round(sum(r.get("index_points") or 0.0 for r in rows), 2),
+            "time_exit_points": round(sum(r.get("index_points") or 0.0 for r in rows if r["outcome"] == "TIME EXIT"), 2),
+            "by_month": by_month}
+
+
+def index_model(rows, cfg, risk_inr=None):
+    """Performance of the INDEX-BASED model in R (1R = the index distance to the stop) and, ONLY as a
+    labelled hypothetical, in rupees with 1R = max_risk_per_trade_inr, before charges and slippage.
+    AMBIGUOUS, INVALID and NO DATA outcomes are excluded (counted separately), never guessed."""
+    risk_inr = float(cfg["max_risk_per_trade_inr"] if risk_inr is None else risk_inr)
+    rs = [r for r in sorted(rows, key=lambda x: x["entry_time"] if x.get("entry_time") else x["day"])
+          if r.get("r_multiple") is not None]
+    wins = [r["r_multiple"] for r in rs if r["r_multiple"] > 0]
+    losses = [r["r_multiple"] for r in rs if r["r_multiple"] <= 0]
+    gross_win, gross_loss = round(sum(wins), 2), round(-sum(losses), 2)
+    eq, peak, mdd, run, worst_run, curve = 0.0, 0.0, 0.0, 0, 0, []
+    for r in rs:
+        eq += r["r_multiple"]
+        peak = max(peak, eq)
+        mdd = max(mdd, peak - eq)
+        run = run + 1 if r["r_multiple"] <= 0 else 0
+        worst_run = max(worst_run, run)
+        curve.append([r["day"], round(eq, 2)])
+    by_month = collections.OrderedDict()
+    for r in rs:
+        m = by_month.setdefault(r["day"][:7], {"trades": 0, "wins": 0, "losses": 0, "net_r": 0.0})
+        m["trades"] += 1
+        m["wins" if r["r_multiple"] > 0 else "losses"] += 1
+        m["net_r"] = round(m["net_r"] + r["r_multiple"], 2)
+    for m in by_month.values():
+        m["hypothetical_inr"] = round(m["net_r"] * risk_inr, 2)
+    n = len(rs)
+    net = round(sum(r["r_multiple"] for r in rs), 2)
+    cap = float(cfg["capital_inr"])
+    return {
+        "label": "INDEX-BASED MODEL, NOT OPTION P&L (1R = Rs %d of risk; before brokerage, taxes and slippage)" % risk_inr,
+        "trades_counted": n, "wins": len(wins), "losses": len(losses),
+        "excluded": {k: sum(1 for r in rows if r["outcome"] == k) for k in ("AMBIGUOUS", "INVALID", "NO DATA")},
+        "win_rate_pct": round(100.0 * len(wins) / n, 1) if n else None,
+        "gross_gain_r": gross_win, "gross_loss_r": gross_loss, "net_r": net,
+        "expectancy_r": round(net / n, 3) if n else None,
+        "profit_factor": round(gross_win / gross_loss, 2) if gross_loss else None,
+        "max_drawdown_r": round(mdd, 2), "max_consecutive_losses": worst_run,
+        "profitable_months": sum(1 for m in by_month.values() if m["net_r"] > 0), "months": len(by_month),
+        "hypothetical_inr": {"start": cap, "net": round(net * risk_inr, 2), "end": round(cap + net * risk_inr, 2),
+                             "max_drawdown": round(mdd * risk_inr, 2)},
+        "by_month": by_month, "equity_curve_r": curve,
+    }
+
+
+def daily_limit_check(rows, cfg, risk_inr=None):
+    """Would the approved daily limits have blocked any ORB trade? (index model: a stop costs 1R = Rs 500)."""
+    risk_inr = float(cfg["max_risk_per_trade_inr"] if risk_inr is None else risk_inr)
+    per_day = collections.Counter(r["day"] for r in rows)
+    worst_day = min((r.get("r_multiple") or 0.0 for r in rows), default=0.0) * risk_inr
+    return {"max_signals_on_one_day": max(per_day.values()) if per_day else 0,
+            "max_trades_per_day": cfg["max_trades_per_day"],
+            "max_stop_exits_per_day": cfg["max_stop_exits_per_day"],
+            "max_daily_loss_inr": cfg["max_daily_loss_inr"], "daily_profit_stop_inr": cfg["daily_profit_stop_inr"],
+            "worst_single_day_inr_index_model": round(worst_day, 2),
+            "blocked_by_daily_limits": 0 if (not per_day or max(per_day.values()) <= 1) else None,
+            "why": ("ORB allows max_signals_per_day = 1, so each day has at most one entry and at most one stop "
+                    "(limits 5 entries and 2 stops); one stop costs at most Rs %d, below the Rs %d daily loss "
+                    "limit; a target day (+2.5R = Rs %d) stays under the Rs %d profit stop, which only blocks "
+                    "NEW entries anyway." % (risk_inr, cfg["max_daily_loss_inr"], 2.5 * risk_inr,
+                                              cfg["daily_profit_stop_inr"]))}
+
+
+def per_trade_risk_fit(cfg, costs, contract, day, stop_pct):
+    """The highest option premium at which ONE lot fits the Rs 500 risk rule with the live sizing
+    (budget.size_at_fills: 20% premium stop, slippage, both legs' charges). Historical premiums are not
+    available, so this gives the threshold, not a per-trade answer."""
+    from .. import budget
+    lo, hi, best = 0.05, 2000.0, None
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        stop = round(mid * (1 - stop_pct / 100.0), 2)
+        try:
+            lots = budget.size_at_fills(cfg, costs, contract, mid, stop, day, cfg["max_daily_loss_inr"])["lots"]
+        except Exception:                                   # noqa: BLE001
+            lots = 0
+        if lots >= 1:
+            best, lo = mid, mid
+        else:
+            hi = mid
+    return {"lot_size": contract.lot_size, "contract": contract.symbol if hasattr(contract, "symbol") else None,
+            "max_premium_for_one_lot": round(best, 2) if best else None, "stop_pct": stop_pct,
+            "note": "A signal whose ATM premium was above this could not be taken at all under the Rs 500 rule; "
+                    "historical premiums are unavailable, so the number of such signals is unknown."}
 
 
 def summarise(signals, sessions):

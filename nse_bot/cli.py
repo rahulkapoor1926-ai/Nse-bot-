@@ -428,6 +428,39 @@ def cmd_fyers_record(a):
     return 0
 
 
+def _option_audit(md, signals, strategy, cal, limit):
+    """For each ORB signal: the contract the bot would have aimed at and FYERS's actual answer for its
+    1-minute history that day. Read-only GET /history; nothing is filled or priced."""
+    from .backtest import signal_study as SS
+    rows, n = [], 0
+    for s in sorted(signals, key=lambda x: x["day"], reverse=True):        # newest first: most likely to exist
+        k = SS._atm(s["trigger_close"]) + 50 * int(strategy.get("strike_offset", 0)) * (1 if s["option_type"] == "CE" else -1)
+        c = SS.option_symbol(dt.date.fromisoformat(s["day"]), s["option_type"], k, cal)
+        row = dict(c, day=s["day"], signal_time=s["signal_time"])
+        if n >= limit:
+            rows.append(dict(row, fyers="not requested (audit limit %d)" % limit, candles_1m=None))
+            continue
+        n += 1
+        fake_id = -n
+        md.symbols[fake_id] = c["symbol"]
+        day = dt.date.fromisoformat(s["day"])
+        try:
+            got = md.candles(fake_id, "1m", clock.at(day, "09:15"), clock.at(day, "15:30"))
+            row.update(fyers="served %d one-minute LTP candles (no bid/ask in /history)" % len(got),
+                       candles_1m=len(got))
+        except NseBotError as e:
+            row.update(fyers="refused: %s" % str(e)[:120], candles_1m=0)
+        finally:
+            md.symbols.pop(fake_id, None)
+        rows.append(row)
+    served = sum(1 for r in rows if r.get("candles_1m"))
+    return {"requested": n, "contracts_with_1m_ltp": served,
+            "contracts_with_historical_bid_ask": 0,
+            "note": ("FYERS /history returns OHLC of traded prices (LTP) only, never bid/ask; an option backtest "
+                     "needs executable bid/ask, so no contract here yields a valid option trade."),
+            "rows": rows}
+
+
 def cmd_signal_study(a):
     """1-year ORB / Sweep SIGNAL study on real FYERS NIFTY 1m index + future bars (no option fills, no P&L)."""
     from .backtest import signal_study as SS
@@ -529,11 +562,33 @@ def cmd_signal_study(a):
         doc["Sweep"] = dict(s, summary=SS.summarise(s["signals"], s["sessions"]))
     else:
         doc["Sweep"] = {"signals": [], "summary": None, "not_evaluable": {"no index-future 1m history": cover(u1)["sessions"]}}
+    oc = SS.index_outcomes(u1 + u5, doc["ORB"]["signals"], strategies["orb"], cfg, cal)
+    doc["ORB_index_outcomes"] = {"summary": SS.summarise_outcomes(oc), "rows": oc,
+                                 "model": SS.index_model(oc, cfg), "daily_limits": SS.daily_limit_check(oc, cfg)}
+    try:
+        from . import scanner
+        ex = scanner.choose_expiry(m, cal, "NIFTY", end.date(), cfg["min_days_to_expiry"])
+        atm = m.pick("NIFTY", ex, "CE", u1[-1][4], 0)
+        doc["ORB_index_outcomes"]["risk_fit"] = SS.per_trade_risk_fit(cfg, cm, atm, end.date(),
+                                                                      strategies["orb"]["stop_pct"])
+    except Exception as e:                                                  # noqa: BLE001
+        doc["ORB_index_outcomes"]["risk_fit"] = {"error": str(e)[:160]}
+    doc["option_audit"] = _option_audit(md, doc["ORB"]["signals"], strategies["orb"], cal, a.option_audit)
     doc["charts"] = SS.charts(u1, doc["ORB"]["signals"] + doc["Sweep"]["signals"])
     doc["charts"].update(SS.charts(u5, doc["ORB"]["signals"], native_minutes=5))
     doc["api_calls"] = md.calls_made
     os.makedirs(a.out, exist_ok=True)
     state.write_json(os.path.join(a.out, "study.json"), doc)
+    oa = doc["option_audit"]
+    print("OPTION_AUDIT %s" % json.dumps({k: oa[k] for k in ("requested", "contracts_with_1m_ltp",
+                                                            "contracts_with_historical_bid_ask")}))
+    for r in oa["rows"][:300]:
+        print("  %s %s %s exp %s (%s): %s" % (r["day"], r["option_type"], r["symbol"], r["expiry"], r["expiry_kind"], r["fyers"]))
+    io = doc["ORB_index_outcomes"]
+    print("INDEX_OUTCOMES %s" % json.dumps(io["summary"], default=str))
+    print("INDEX_MODEL %s" % json.dumps({k: v for k, v in io["model"].items() if k != "equity_curve_r"}, default=str))
+    print("DAILY_LIMITS %s" % json.dumps(io["daily_limits"]))
+    print("RISK_FIT %s" % json.dumps(io.get("risk_fit"), default=str))
     brief = {k: doc[k] for k in ("requested", "index_daily", "calendar_added", "coverage", "api_calls", "note", "options_pnl", "fetch_audit")}
     for fam in ("ORB", "Sweep"):
         x = doc[fam]
@@ -625,6 +680,8 @@ def build_parser():
     s.add_argument("--days", type=int, default=365)
     s.add_argument("--older-days", type=int, default=0,
                    help="also try FYERS 5-minute index bars back this many days, before the 1-minute history (ORB only)")
+    s.add_argument("--option-audit", type=int, default=0,
+                   help="check FYERS history for the option contract of up to this many ORB signals (one call each)")
     s.add_argument("--orb-strategy", default="config/strategies/orb15.example.json")
     s.add_argument("--sweep-strategy", default="config/strategies/sweep.example.json")
     s.add_argument("--max-calls-per-minute", type=int, default=20)

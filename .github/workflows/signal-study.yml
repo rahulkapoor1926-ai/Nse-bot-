@@ -70,7 +70,7 @@ jobs:
         run: |
           python3 -m nse_bot --config config/paper.json signal-study --refresh-master \
             --out state/signal-study --days "${DAYS_INPUT:-730}" --older-days "${OLDER_INPUT:-730}" \
-            --max-calls-per-minute 20 --max-calls-per-second 2 --max-calls-per-day 300
+            --max-calls-per-minute 20 --max-calls-per-second 2 --max-calls-per-day 450 --option-audit 228
 
       - name: Signals found (first 40 of each)
         if: always()

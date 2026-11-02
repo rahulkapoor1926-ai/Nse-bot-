@@ -1,6 +1,7 @@
 """Signal study: real-bar replays of the live ORB / Sweep logic with no option fills and no P&L."""
 
 import datetime as dt
+import os
 import unittest
 from unittest import mock
 
@@ -77,6 +78,107 @@ class Orb(unittest.TestCase):
         self.assertEqual(list(sm["by_month"]), ["2026-10", "2026-11"])
 
 
+class IndexOutcomes(unittest.TestCase):
+    """INDEX-BASED outcome of ORB signals on real-shaped 1m bars (no option prices)."""
+
+    def sig(self, typ="CE"):
+        d = DAYS[1]
+        return {"family": "ORB", "day": d.isoformat(), "signal_time": clock.at(d, "09:45").isoformat(),
+                "option_type": typ, "entry_window": [clock.at(d, "09:50").isoformat(), clock.at(d, "09:55").isoformat()],
+                "invalidate_below": 25000.0 if typ == "CE" else None,
+                "invalidate_above": 25000.0 if typ == "PE" else None}
+
+    def bars(self, path):
+        d, out = DAYS[1], []
+        for i, (o, h, l, c) in enumerate(path):
+            out.append((clock.at(d, "09:50") + dt.timedelta(minutes=i), o, h, l, c, 0))
+        return out
+
+    def run_(self, path, typ="CE"):
+        return SS.index_outcomes(self.bars(path), [self.sig(typ)], ORB, synth.cfg("/tmp/x"), CAL)[0]
+
+    def test_target_sl_ambiguous_time_exit(self):
+        r = self.run_([(25040, 25041, 25039, 25040), (25040, 25141, 25039, 25140)])   # risk 40 -> target 25140
+        self.assertEqual((r["outcome"], r["entry"], r["target"], r["r_multiple"]), ("TARGET", 25040, 25140.0, 2.5))
+        r = self.run_([(25040, 25041, 24999, 25000)])
+        self.assertEqual((r["outcome"], r["index_points"], r["r_multiple"]), ("SL", -40.0, -1.0))
+        r = self.run_([(25040, 25141, 24999, 25000)])
+        self.assertEqual((r["outcome"], r["exit"]), ("AMBIGUOUS", None))
+        r = self.run_([(25040, 25050, 25030, 25045)] * 3)
+        self.assertEqual((r["outcome"], r["exit"]), ("TIME EXIT", 25045))
+        r = self.run_([(25060, 25061, 25058, 25059), (25059, 25060, 24999, 25000)], typ="PE")
+        self.assertEqual(r["outcome"], "INVALID")                              # PE entry already above its stop
+
+    def test_bars_after_the_time_exit_are_ignored(self):
+        flat = clock.at(DAYS[1], "15:15")
+        b = self.bars([(25040, 25041, 25039, 25040)])
+        b.append((flat, 25040, 25200, 25039, 25200, 0))                       # the 15:15 bar is after flat_by
+        r = SS.index_outcomes(b, [self.sig()], ORB, synth.cfg("/tmp/x"), CAL)[0]
+        self.assertEqual(r["outcome"], "TIME EXIT")
+
+    def test_summary_counts_and_label(self):
+        rows = [{"day": "2026-10-29", "outcome": "TARGET", "index_points": 100.0},
+                {"day": "2026-10-29", "outcome": "SL", "index_points": -40.0},
+                {"day": "2026-11-02", "outcome": "AMBIGUOUS"}]
+        sm = SS.summarise_outcomes(rows)
+        self.assertEqual((sm["totals"]["TARGET"], sm["totals"]["SL"], sm["totals"]["AMBIGUOUS"]), (1, 1, 1))
+        self.assertEqual((sm["target_hit_pct_of_target_or_sl"], sm["index_points_total"]), (50.0, 60.0))
+        self.assertIn("INDEX-BASED, NOT OPTION P&L", sm["note"])
+
+
+class IndexModel(unittest.TestCase):
+    def test_r_metrics_drawdown_streak_and_labelled_rupees(self):
+        rows = [{"day": "2026-01-02", "outcome": "SL", "r_multiple": -1.0},
+                {"day": "2026-01-05", "outcome": "SL", "r_multiple": -1.0},
+                {"day": "2026-01-06", "outcome": "TARGET", "r_multiple": 2.5},
+                {"day": "2026-02-02", "outcome": "TIME EXIT", "r_multiple": 0.4},
+                {"day": "2026-02-03", "outcome": "AMBIGUOUS"}]
+        m = SS.index_model(rows, synth.cfg("/tmp/x", capital_inr=20000, max_risk_per_trade_inr=500))
+        self.assertEqual((m["trades_counted"], m["wins"], m["losses"], m["excluded"]["AMBIGUOUS"]), (4, 2, 2, 1))
+        self.assertEqual((m["gross_gain_r"], m["gross_loss_r"], m["net_r"], m["profit_factor"]), (2.9, 2.0, 0.9, 1.45))
+        self.assertEqual((m["max_drawdown_r"], m["max_consecutive_losses"], m["win_rate_pct"]), (2.0, 2, 50.0))
+        self.assertEqual(m["hypothetical_inr"], {"start": 20000.0, "net": 450.0, "end": 20450.0, "max_drawdown": 1000.0})
+        self.assertIn("NOT OPTION P&L", m["label"])
+        self.assertEqual(m["by_month"]["2026-01"]["net_r"], 0.5)
+
+    def test_daily_limits_with_one_signal_a_day(self):
+        rows = [{"day": "2026-01-02", "r_multiple": -1.0}, {"day": "2026-01-05", "r_multiple": 2.5}]
+        c = synth.cfg("/tmp/x", max_risk_per_trade_inr=500, max_daily_loss_inr=1000, max_trades_per_day=5,
+                      max_stop_exits_per_day=2, daily_profit_stop_inr=2000)
+        d = SS.daily_limit_check(rows, c)
+        self.assertEqual((d["blocked_by_daily_limits"], d["worst_single_day_inr_index_model"]), (0, -500.0))
+
+    def test_risk_fit_uses_the_live_sizing(self):
+        from nse_bot import budget
+        from nse_bot.costs import CostModel
+        from nse_bot.instruments import Contract
+        cfg = synth.cfg("/tmp/x")
+        costs = CostModel.load(os.path.join(synth.ROOT, cfg["costs_file"]))
+        c = Contract(1, "NSE:NIFTY26N0325000CE", "NIFTY", dt.date(2026, 11, 3), 25000.0, "CE", 65, 0.05, 1800)
+        r = SS.per_trade_risk_fit(cfg, costs, c, dt.date(2026, 11, 2), 20)
+        p = r["max_premium_for_one_lot"]
+        ok = budget.size_at_fills(cfg, costs, c, p - 0.5, round((p - 0.5) * 0.8, 2), dt.date(2026, 11, 2), 1000)["lots"]
+        no = budget.size_at_fills(cfg, costs, c, p + 1, round((p + 1) * 0.8, 2), dt.date(2026, 11, 2), 1000)["lots"]
+        self.assertEqual((ok >= 1, no), (True, 0))
+
+
+class Contracts(unittest.TestCase):
+    def test_expiry_and_fyers_symbols(self):
+        self.assertEqual(SS.nifty_expiry(dt.date(2026, 10, 29), CAL), dt.date(2026, 11, 3))
+        self.assertEqual(SS.nifty_expiry(dt.date(2026, 11, 3), CAL), dt.date(2026, 11, 3))   # expiry day itself
+        w = SS.option_symbol(dt.date(2026, 10, 29), "CE", 25000, CAL)
+        self.assertEqual((w["symbol"], w["expiry_kind"]), ("NSE:NIFTY26N0325000CE", "weekly"))
+        m = SS.option_symbol(dt.date(2026, 10, 22), "PE", 25000, CAL)        # last Tuesday of October
+        self.assertEqual((m["symbol"], m["expiry"]), ("NSE:NIFTY26OCT25000PE", "2026-10-27"))
+
+    def test_holiday_tuesday_moves_to_the_previous_trading_day(self):
+        cal = synth.calendar()
+        hol = dt.date(2026, 11, 24)                                       # Tuesday, Prakash Gurpurb (NSE list)
+        if cal.is_trading_day(hol):
+            self.skipTest("synthetic calendar has no 24 Nov holiday")
+        self.assertEqual(SS.nifty_expiry(dt.date(2026, 11, 20), cal), dt.date(2026, 11, 23))
+
+
 class ObservedCalendar(unittest.TestCase):
     def test_past_year_from_real_sessions_file_years_untouched(self):
         file_years = {"2026": {"holidays": {"2026-01-26": "Republic Day"}}}
@@ -146,6 +248,9 @@ class Sweep(unittest.TestCase):
         self.assertEqual(r["not_evaluable"].get("data_future: future bars without volume"), 1)
         self.assertEqual(r["funnel_last_failed_rule"], {"sweep": 1})
         self.assertEqual(r["furthest_rule_failed"], {"sweep": 1})
+        audit = {x["rule"]: x for x in r["rule_audit"]}
+        self.assertEqual(len(r["day_audit"]), 1)
+        self.assertIn("data_future", audit)
 
 
 if __name__ == "__main__":
