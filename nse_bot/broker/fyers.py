@@ -90,7 +90,7 @@ class FyersReadOnly(MarketData):
     verifies_spot = True
 
     def __init__(self, env=os.environ, transport=urllib_transport, per_minute=20, sleep=time.sleep,
-                 monotonic=time.monotonic, per_day=2400, per_second=PER_SECOND):
+                 monotonic=time.monotonic, per_day=2400, per_second=PER_SECOND, now=clock.now_ist):
         self._app = (env.get(ENV_APP) or "").strip()
         self._secret = (env.get(ENV_SECRET) or "").strip()
         self._code = (env.get(ENV_CODE) or "").strip()
@@ -99,7 +99,7 @@ class FyersReadOnly(MarketData):
             raise ConfigError("%s is not set (add it as a GitHub Actions repository secret)" % ENV_APP)
         if not self._token and not (self._secret and self._code):
             raise ConfigError("FYERS needs %s, or %s and today's %s" % (ENV_TOKEN, ENV_SECRET, ENV_CODE))
-        self._transport, self._sleep, self._mono = transport, sleep, monotonic
+        self._transport, self._sleep, self._mono, self._now = transport, sleep, monotonic, now
         self._per_minute, self._per_day, self._per_second = int(per_minute), int(per_day), int(per_second)
         self._candle_cache = {}
         self._calls = []
@@ -208,7 +208,7 @@ class FyersReadOnly(MarketData):
             ask_qty=_int(asks[0].get("volume")) if asks and _price(asks[0].get("price")) else None,
             ts=ts, volume=_int(d.get("v")), oi=_int(d.get("oi")),
             dpr_low=_price(d.get("lower_ckt")), dpr_high=_price(d.get("upper_ckt")), source="fyers",
-            extra={"received_at": clock.now_ist().isoformat()})
+            extra={"received_at": self._now().isoformat()})
 
     def quotes(self, instrument_ids):
         out = {}

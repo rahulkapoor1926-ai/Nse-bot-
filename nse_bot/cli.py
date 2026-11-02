@@ -32,6 +32,7 @@ import time
 from . import (analyst, clock, config, costs as costs_mod, dashboard, events as events_mod, gate, instruments,
                news, pelosi, report, risk)
 from .alerts import Alerts
+from .notify import Notifier
 from .backtest import engine, equity_engine, metrics
 from .data import store
 from .errors import ConfigError, DataError, NseBotError
@@ -257,14 +258,19 @@ def cmd_paper(a):
     broker = PaperBroker(cfg["state_dir"], cm, cfg["slippage_ticks"])
     broker.ledger.verify()
     print(report.BANNER)
+    first = True
     while True:
         now = clock.now_ist()
         if _should_stop(a, cal, now):
             _dashboard(cfg, now, "stopped", master=m)
             return
+        nt = Notifier(cfg["state_dir"], now.date(), cfg)
+        if first:
+            print("P&L notifications: %s" % nt.channel)
+            first = False
         book = risk.RiskBook.open(cfg["state_dir"], now.date())
         al = Alerts(cfg["state_dir"], now.date())
-        ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest)
+        ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest, nt)
         err = None
         try:
             res = bot.run_once(ctx, now)
@@ -291,6 +297,30 @@ def _dashboard(cfg, now, status, marks=None, error=None, master=None):
         dashboard.write(cfg["state_dir"], cfg, now)
     except Exception as e:                      # noqa: BLE001  (the dashboard must not affect the loop)
         LOG.error("dashboard update failed: %s", e)
+
+
+def cmd_notify_summary(a):
+    from .broker.paper import Ledger
+    now = clock.now_ist()
+    day = dt.date.fromisoformat(a.date) if a.date else now.date()
+    books = []
+    for path in [a.config] + a.also_config:
+        cfg = config.load(path)
+        books.append((os.path.splitext(os.path.basename(path))[0], Ledger(cfg["state_dir"]).records()))
+    names = {}
+    if a.master:
+        try:
+            cfg0 = config.load(a.config)
+            m = instruments.load(a.master, cfg0["underlyings"], cfg0.get("index_names", {}).values())
+            for _, recs in books:
+                for r in recs:
+                    x = r.get("instrument_id") is not None and m.by_id(int(r["instrument_id"]))
+                    if x:
+                        names[str(r["instrument_id"])] = x.symbol
+        except Exception as e:                  # noqa: BLE001  (names are cosmetic)
+            LOG.warning("contract names unavailable: %s", e)
+    first = config.load(a.config)
+    Notifier(first["state_dir"], day, first).daily_summary(books, day, now, names)
 
 
 def cmd_dashboard(a):
@@ -429,6 +459,11 @@ def build_parser():
     s.add_argument("--underlying", default="NIFTY", help="for --kind sweep")
     s.set_defaults(fn=cmd_build_dataset)
     sub.add_parser("risk-status").set_defaults(fn=cmd_risk_status)
+    s = sub.add_parser("notify-summary", help="send the daily paper P&L summary (reporting only)")
+    s.add_argument("--also-config", action="append", default=[], help="another book's config to include")
+    s.add_argument("--date", help="YYYY-MM-DD (default today IST)")
+    s.add_argument("--master", help="symbol master CSV, for contract names")
+    s.set_defaults(fn=cmd_notify_summary)
     sub.add_parser("report").set_defaults(fn=cmd_report)
     sub.add_parser("dashboard").set_defaults(fn=cmd_dashboard)
     s = sub.add_parser("news"); s.add_argument("--feeds"); s.add_argument("--hours", type=int, default=24)

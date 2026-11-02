@@ -139,6 +139,7 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     rep["decision"] = "TAKE"
     ctx.alerts.emit("price", "filled-" + key, "PAPER bought %d %s @ %.2f; stop %.2f target %.2f (estimates)" % (
         res["filled_qty"], c.symbol, res["price"], plan["stop"], plan["target"]), now)
+    ctx.notify.opened(c, res, plan, now, strategy["name"])
     return [cand, {"entered": True}]
 
 

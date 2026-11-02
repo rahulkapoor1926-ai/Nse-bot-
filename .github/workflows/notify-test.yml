@@ -1,0 +1,36 @@
+# Sends one test message to your Telegram so you can confirm notifications reach your phone.
+# No market data, no trading. Needs the TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets.
+name: notify-test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TZ: Asia/Kolkata
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Send a test notification
+        run: |
+          python3 - <<'PY'
+          import sys, tempfile
+          from nse_bot import clock
+          from nse_bot.notify import Notifier
+          now = clock.now_ist()
+          n = Notifier(tempfile.mkdtemp(), now.date(), {"data_source": "fyers"})
+          if n.channel != "telegram":
+              print("TELEGRAM_BOT_TOKEN and/or TELEGRAM_CHAT_ID secret is missing (values are never printed)")
+              sys.exit(2)
+          ok = n.send("test", "NSE paper bot: test notification. P&L alerts will arrive here. "
+                      "Paper trading only, no real orders.", now)
+          print("delivered to Telegram" if ok else "NOT delivered: see the error above")
+          sys.exit(0 if ok else 1)
+          PY

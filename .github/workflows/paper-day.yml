@@ -38,6 +38,9 @@ jobs:
       SAHI_KEY_SECRET: ${{ secrets.SAHI_KEY_SECRET }}
       SAHI_TOTP: ${{ secrets.SAHI_TOTP }}
       FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+      # P&L notifications to your phone (optional; without them messages only go to the log)
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -144,6 +147,9 @@ jobs:
             python3 -m nse_bot --config $c risk-status || true
             python3 -m nse_bot --config $c report || true
           done
+          # daily P&L summary for both books (reporting only)
+          python3 -m nse_bot --config config/paper.json notify-summary --also-config config/paper-sweep.json \
+            --master state/instruments-fyers.csv || true
           echo "ORB paper exit $PAPER, sweep paper exit $SPAPER"
           [ "$PAPER" -eq 0 ] && [ "$SPAPER" -eq 0 ]
 

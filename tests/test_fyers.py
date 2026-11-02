@@ -71,7 +71,7 @@ def _q(url, key):
 
 
 def client(http, **kw):
-    md = fyers.FyersReadOnly(env=ENV, transport=http, sleep=lambda s: None, **kw)
+    md = fyers.FyersReadOnly(env=ENV, transport=http, sleep=lambda s: None, now=lambda: NOW, **kw)
     return md.bind(None, {IDX: "NSE:NIFTY50-INDEX", CE: "NSE:NIFTY26N0425000CE", FUT: "NSE:NIFTY26NOVFUT"})
 
 

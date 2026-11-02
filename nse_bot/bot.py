@@ -23,7 +23,10 @@ log = logging.getLogger("nse_bot")
 
 class Context(object):
     def __init__(self, cfg, cal, master, md, costs, broker, risk, alerts, strategy, events=(),
-                 dataset_digest=None):
+                 dataset_digest=None, notifier=None):
+        from .notify import Silent
+        # P&L notifications: reporting only, never consulted for a trading decision
+        self.notify = notifier or Silent()
         self.cfg, self.cal, self.master, self.md, self.costs = cfg, cal, master, md, costs
         self.broker, self.risk, self.alerts = broker, risk, alerts
         self.strategies = list(strategy) if isinstance(strategy, (list, tuple)) else [strategy]
@@ -97,6 +100,7 @@ def manage_positions(ctx, now, ulast):
             ctx.marks[iid] = {"bid": None, "time": now.isoformat(), "unrealized": None,
                               "note": decision["reason"]}
             ctx.alerts.emit("stale_data", "exit-%s-%s" % (iid, now.strftime("%H%M")), decision["reason"], now)
+            ctx.notify.update(c, p, q, decision, ctx.marks[iid], now)
             events.append(("no_price", iid))
             continue
         bid = decision["price"]
@@ -106,6 +110,7 @@ def manage_positions(ctx, now, ulast):
         ctx.marks[iid] = {"bid": bid, "time": now.isoformat(), "unrealized": round(unrealized, 2)}
         ctx.risk.mark(unrealized, ctx.cfg, now)
         if decision["action"] != "EXIT":
+            ctx.notify.update(c, p, q, decision, ctx.marks[iid], now)
             continue
         res = ctx.broker.sell(c, p["qty"], q, now, meta={"reason": decision["reason"]})
         if res["status"] == "FAILED":
@@ -116,6 +121,7 @@ def manage_positions(ctx, now, ulast):
             continue
         after = ctx.broker.ledger.positions()[iid]
         realized_now = after["realized"] - p["realized"]
+        ctx.notify.closed(c, p, res, _last_buy(ctx, iid), decision["reason"], realized_now, now)
         kind = "stop" if decision["reason"].startswith("stop") else "target" if decision["reason"] == "target" else "price"
         ctx.alerts.emit(kind, "%s-%s" % (iid, res["record"][:8]), "%s %s: sold %d @ %.2f (%s), P&L Rs %.2f%s" % (
             "PAPER", c.symbol, res["filled_qty"], res["price"], decision["reason"], realized_now,
@@ -127,6 +133,12 @@ def manage_positions(ctx, now, ulast):
             ctx.risk.save()
         events.append(("exit", iid, res["status"]))
     return events
+
+
+def _last_buy(ctx, iid):
+    buys = [r for r in ctx.broker.ledger.records()
+            if r.get("event") == "fill" and r.get("side") == "BUY" and str(r.get("instrument_id")) == str(iid)]
+    return buys[-1] if buys else None
 
 
 def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
@@ -185,6 +197,7 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         ctx.risk.record_entry(order, now)
         ctx.alerts.emit("price", "filled-" + key, "PAPER bought %d %s @ %.2f; stop %.2f target %.2f" % (
             res["filled_qty"], c.symbol, res["price"], plan["stop"], plan["target"]), now)
+        ctx.notify.opened(c, res, plan, now, strategy["name"])
         out.append({"entered": True})
         break                                   # at most one new entry per cycle
     return out
