@@ -6,3 +6,4 @@
 {"data": {}, "key": "10100000003045-1035", "kind": "candidate", "message": "REJECTED SBIN: signal is more than 2 hours old", "time": "2026-11-02T12:47:15.610854+05:30"}
 {"data": {}, "key": "101000000011536-0950", "kind": "candidate", "message": "REJECTED TCS: signal is more than 2 hours old; quote: timestamp 5s in the future: clock or feed problem", "time": "2026-11-02T12:47:15.610854+05:30"}
 {"data": {}, "key": "101126110353940-0950", "kind": "candidate", "message": "REJECTED NSE:NIFTY26N0323300CE: signal is more than 2 hours old; quote: timestamp 5s in the future: clock or feed problem", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "101126110353932-0950", "kind": "candidate", "message": "REJECTED NSE:NIFTY26N0323250CE: signal is more than 2 hours old; quote: timestamp 29s in the future: clock or feed problem", "time": "2026-11-02T12:55:08.113902+05:30"}
