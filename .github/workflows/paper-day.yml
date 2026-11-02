@@ -146,14 +146,14 @@ jobs:
           SAVER=$!
           # recorders are not run on FYERS: its call budget is kept for trading decisions
           python3 -m nse_bot --config config/paper.json paper --refresh-master --until "$UNTIL" --every 30 \
-            --max-calls-per-minute 22 --max-calls-per-second 2 --max-calls-per-day 2400 \
+            --max-calls-per-minute 22 --max-calls-per-second 2 --max-calls-per-day 2250 \
             --strategy config/strategies/orb15-equity.example.json \
             --strategy config/strategies/orb15.example.json &
           ORB=$!
           for i in $(seq 1 60); do [ -s state/instruments-fyers.csv.symbols.json ] && break; sleep 5; done
           SPAPER=0
           python3 -m nse_bot --config config/paper-sweep.json paper --master state/instruments-fyers.csv \
-            --until "$UNTIL" --every 30 --max-calls-per-minute 22 --max-calls-per-second 2 --max-calls-per-day 2400 \
+            --until "$UNTIL" --every 30 --max-calls-per-minute 22 --max-calls-per-second 2 --max-calls-per-day 2250 \
             --strategy config/strategies/sweep.example.json || SPAPER=$?
           PAPER=0
           wait $ORB || PAPER=$?

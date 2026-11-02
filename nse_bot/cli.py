@@ -397,6 +397,24 @@ def cmd_build_dataset(a):
     print(json.dumps(doc, indent=2))
 
 
+def cmd_fyers_record(a):
+    """Read-only FYERS options recorder (data/fyers_recorder.py). Never places an order."""
+    cfg, cal, cm = _common(a.config)
+    if cfg["data_source"] != "fyers":
+        raise ConfigError("fyers-record needs data_source 'fyers' (sources are never mixed)")
+    if cfg.get("live_orders_enabled") is not False:
+        raise ConfigError("live_orders_enabled must stay false")
+    a.max_calls_per_minute = a.max_calls_per_minute or 4
+    cfg, cal, cm, m, md = _fyers_ctx(a, cfg, cal, cm)
+    from .data import fyers_recorder
+    rec = fyers_recorder.Recorder(md, m, cal, cfg, a.out, log=lambda x: print(x, flush=True))
+    res = rec.run(a.until or "15:31", smoke=a.smoke)
+    day = clock.now_ist().date()
+    summary = rec._summary(day) if os.path.isdir(os.path.join(a.out, day.isoformat())) else None
+    print(json.dumps({"result": res, "summary": summary}, indent=2, default=str))
+    return 0
+
+
 def cmd_fetch_history(a):
     from .data import history
     cfg, cal, cm, m, md = _sahi_ctx(a)
@@ -457,6 +475,19 @@ def build_parser():
             s.add_argument("--sweep", action="store_true",
                            help="record 1m index + current-month future bars and option snapshots (sweep_reversal data)")
         s.set_defaults(fn=fn)
+    s = sub.add_parser("fyers-record", help="record NIFTY ATM + 2 ITM CE/PE quotes from FYERS every minute "
+                                             "(read-only)")
+    s.add_argument("--master", default="state/instruments-fyers.csv")
+    s.add_argument("--refresh-master", action="store_true")
+    s.add_argument("--out", default="state/fyers-recordings")
+    s.add_argument("--until", type=_hhmm, help="IST HH:MM to stop (default 15:31)")
+    s.add_argument("--smoke", type=int, default=0,
+                   help="record N snapshots right away, whatever the market state (connectivity test)")
+    s.add_argument("--max-calls-per-minute", type=int, default=4)
+    s.add_argument("--max-calls-per-second", type=int, default=2)
+    s.add_argument("--max-calls-per-day", type=int, default=450,
+                   help="this process's share of FYERS's 5,000/day (the paper bots use 2,250 each)")
+    s.set_defaults(fn=cmd_fyers_record)
     s = sub.add_parser("eod-report", help="daily NIFTY report from NSE's free end-of-day files (no login, no trades)")
     s.add_argument("--date", help="trading day YYYY-MM-DD (default: today IST)")
     s.add_argument("--out", default="state/eod"); s.add_argument("--raw", default="state/eod-raw")
