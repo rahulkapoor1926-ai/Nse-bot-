@@ -60,7 +60,7 @@ Nothing below was bought or subscribed to.
 | Source | Expired contracts | Bid/ask | Usable for fills here | Notes |
 |---|---|---|---|---|
 | Own forward recording (`data/recorder.py`) | yes, kept as recorded | yes, best bid/ask at each bar close | yes | Free. The recorder reads SAHI today; a FYERS recorder is not built yet and would use part of the 5,000 calls/day budget. Data accumulates only from the day recording starts. |
-| FYERS history API | no (live contracts only) | no | no | 1-minute is the finest resolution; OHLCV only. |
+| FYERS history API | **no: tested** (run 41468202137: 30 expired NIFTY contracts, 24 monthly + 6 weekly, all refused with HTTP 422 "Invalid symbol"/"Invalid input") | no | no | 1-minute OHLCV only. Live contracts only from their listing date (nearest weekly 3 Nov 2026: from 23 Sep 2026). NIFTY index 1-minute: about 1 year back (2 years back refused); index daily: 2 years. |
 | [Dhan Expired Options Data API](https://dhanhq.co/docs/v2/expired-options-data/) | yes, up to 5 years, ATM +/-10 strikes near expiry | no (OHLC, volume, OI, IV, spot) | no | Useful for research on premiums, never as bid/ask fills. Whether it needs a paid data plan was not stated. |
 | [NSE historical data](https://nsearchives.nseindia.com/content/press/Data_Details_F_n_O.pdf) (NSE Data & Analytics) | yes | trades and a few order-book snapshots a day | partly | Paid; snapshots are "discrete", so a spread at each 5-minute bar is not guaranteed. Price and coverage need a quote from NSE. |
 | Paid tick vendors (e.g. TrueData, Global Datafeeds) | yes | tick-level bid/ask on some plans | yes, if bid/ask is included | Paid; not verified here. |
