@@ -1,0 +1,85 @@
+# 1-year NIFTY SIGNAL study (ORB + Liquidity Sweep) on real FYERS 1-minute index / index-future bars.
+# READ-ONLY (GET /history only, no order code) and manual only. No option fills and no P&L: FYERS has
+# no expired NIFTY options and no historical bid/ask (docs/nse/VALIDATION.md). The result goes to a
+# private Actions cache (exchange data), read by the dashboard's Study tab; only the summary is logged.
+name: signal-study
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Calendar days of history (FYERS serves about 1 year of 1-minute bars)"
+        required: false
+        default: "365"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signal-study
+  cancel-in-progress: false
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TZ: Asia/Kolkata
+      FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Config (paper, FYERS, real orders disabled)
+        run: |
+          cp config/paper.example.json config/paper.json
+          python3 -m nse_bot --config config/paper.json validate-config
+          python3 -c "import json; c=json.load(open('config/paper.json')); assert c['data_source']=='fyers' and c['live_orders_enabled'] is False; print('data_source=fyers, live_orders_enabled=false')"
+
+      - name: Signal study tests
+        run: python3 -m unittest discover -s tests -p "test_signal_study.py"
+
+      - name: FYERS login (token masked, kept only for this job)
+        env:
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from nse_bot.broker import fyers
+          md = fyers.FyersReadOnly()
+          info = md.login()
+          print("::add-mask::%s" % md._token)
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write("FYERS_ACCESS_TOKEN=%s\n" % md._token)
+          print("FYERS login ok (token masked); refresh token received: %s" % info["refresh_token_received"])
+          PY
+
+      - name: Run the study
+        env:
+          DAYS_INPUT: ${{ github.event.inputs.days }}
+        run: |
+          python3 -m nse_bot --config config/paper.json signal-study --refresh-master \
+            --out state/signal-study --days "${DAYS_INPUT:-365}" \
+            --max-calls-per-minute 20 --max-calls-per-second 2 --max-calls-per-day 60
+
+      - name: Signals found (first 40 of each)
+        if: always()
+        run: |
+          [ -f state/signal-study/study.json ] || { echo "no study written"; exit 0; }
+          python3 - <<'PY'
+          import json
+          d = json.load(open("state/signal-study/study.json"))
+          for fam in ("ORB", "Sweep"):
+              s = d[fam]["signals"]
+              print("%s: %d signals" % (fam, len(s)))
+              for x in s[:40]:
+                  print("  %s %s %s strike %s regime %s" % (x["day"], x["signal_time"], x["option_type"],
+                                                           x["target_strike"], x.get("regime")))
+          PY
+
+      - name: Save the study (private cache)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state/signal-study
+          key: signal-study-${{ github.run_id }}

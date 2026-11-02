@@ -30,7 +30,7 @@ import sys
 import time
 
 from . import (analyst, clock, config, costs as costs_mod, dashboard, events as events_mod, gate, instruments,
-               news, pelosi, report, risk)
+               news, pelosi, report, risk, state)
 from .alerts import Alerts
 from .notify import Notifier
 from .backtest import engine, equity_engine, metrics
@@ -427,6 +427,56 @@ def cmd_fyers_record(a):
     return 0
 
 
+def cmd_signal_study(a):
+    """1-year ORB / Sweep SIGNAL study on real FYERS NIFTY 1m index + future bars (no option fills, no P&L)."""
+    from .backtest import signal_study as SS
+    cfg, cal, cm = _common(a.config)
+    if cfg["data_source"] != "fyers":
+        raise ConfigError("signal-study reads FYERS history: data_source must be 'fyers'")
+    a.max_calls_per_minute = a.max_calls_per_minute or 20
+    cfg, cal, cm, m, md = _fyers_ctx(a, cfg, cal, cm)
+    end = clock.now_ist()
+    start = clock.at((end - dt.timedelta(days=a.days)).date(), "09:15")
+    iid = m.index_id(cfg["index_names"]["NIFTY"])
+    u1 = [b for b in md.candles(iid, "1m", start, end) if b[0] + dt.timedelta(minutes=1) <= end]
+    fut = m.current_future("NIFTY", end.date())
+    f1, fut_note = [], None
+    if fut is None:
+        fut_note = "no current NIFTY future in the symbol master"
+    else:
+        try:
+            f1 = [b for b in md.candles(fut.instrument_id, "1m", start, end) if b[0] + dt.timedelta(minutes=1) <= end]
+        except NseBotError as e:
+            fut_note = "future history refused: %s" % e
+    strategies = {name: _strategy(path) for name, path in (("orb", a.orb_strategy), ("sweep", a.sweep_strategy))}
+
+    def cover(bars):
+        d = sorted({b[0].date() for b in bars})
+        return {"bars": len(bars), "sessions": len(d), "first": d[0].isoformat() if d else None,
+                "last": d[-1].isoformat() if d else None}
+    doc = {"generated": end.isoformat(), "source": "FYERS /history, 1-minute, read-only", "note": SS.NOT_SIMULATED,
+           "coverage": {"index": cover(u1), "future": dict(cover(f1), symbol=md.symbols.get(fut.instrument_id) if fut
+                                                            else None, note=fut_note)}}
+    o = SS.orb(u1, strategies["orb"], cfg, cal)
+    doc["ORB"] = dict(o, summary=SS.summarise(o["signals"], o["sessions"]))
+    if f1:
+        s = SS.sweep_reversal(u1, f1, strategies["sweep"], cfg, cal)
+        doc["Sweep"] = dict(s, summary=SS.summarise(s["signals"], s["sessions"]))
+    else:
+        doc["Sweep"] = {"signals": [], "summary": None, "not_evaluable": {"no index-future 1m history": cover(u1)["sessions"]}}
+    doc["charts"] = SS.charts(u1, doc["ORB"]["signals"] + doc["Sweep"]["signals"])
+    doc["api_calls"] = md.calls_made
+    os.makedirs(a.out, exist_ok=True)
+    state.write_json(os.path.join(a.out, "study.json"), doc)
+    brief = {k: doc[k] for k in ("coverage", "api_calls", "note")}
+    for fam in ("ORB", "Sweep"):
+        x = doc[fam]
+        brief[fam] = {"summary": x.get("summary"), "not_evaluable": x.get("not_evaluable"),
+                      "funnel_last_failed_rule": x.get("funnel_last_failed_rule"), "skipped": x.get("skipped")}
+    print(json.dumps(brief, indent=2, default=str))
+    return 0
+
+
 def cmd_fetch_history(a):
     from .data import history
     cfg, cal, cm, m, md = _sahi_ctx(a)
@@ -500,6 +550,18 @@ def build_parser():
     s.add_argument("--max-calls-per-day", type=int, default=450,
                    help="this process's share of FYERS's 5,000/day (the paper bots use 2,250 each)")
     s.set_defaults(fn=cmd_fyers_record)
+    s = sub.add_parser("signal-study", help="1-year ORB/Sweep signal study on real FYERS NIFTY 1m bars "
+                                             "(no option fills, no P&L)")
+    s.add_argument("--master", default="state/instruments-fyers.csv")
+    s.add_argument("--refresh-master", action="store_true")
+    s.add_argument("--out", default="state/signal-study")
+    s.add_argument("--days", type=int, default=365)
+    s.add_argument("--orb-strategy", default="config/strategies/orb15.example.json")
+    s.add_argument("--sweep-strategy", default="config/strategies/sweep.example.json")
+    s.add_argument("--max-calls-per-minute", type=int, default=20)
+    s.add_argument("--max-calls-per-second", type=int, default=2)
+    s.add_argument("--max-calls-per-day", type=int, default=60)
+    s.set_defaults(fn=cmd_signal_study)
     s = sub.add_parser("eod-report", help="daily NIFTY report from NSE's free end-of-day files (no login, no trades)")
     s.add_argument("--date", help="trading day YYYY-MM-DD (default: today IST)")
     s.add_argument("--out", default="state/eod"); s.add_argument("--raw", default="state/eod-raw")
