@@ -1,0 +1,58 @@
+{
+  "books": [
+    "paper",
+    "paper-sweep"
+  ],
+  "capital_inr": 20000,
+  "families": {
+    "ORB": {
+      "avg_loss": null,
+      "avg_win": null,
+      "costs": 0,
+      "expectancy": null,
+      "gross": 0,
+      "losses": 0,
+      "max_drawdown_inr": 0.0,
+      "max_drawdown_pct_of_capital": 0.0,
+      "net": 0,
+      "profit_factor": null,
+      "profit_factor_note": "no trades",
+      "sample": "INSUFFICIENT SAMPLE: 0 completed trades; at least 30 are needed before any conclusion (100+ preferred). These numbers are not evidence.",
+      "trades": 0,
+      "win_rate_pct": null,
+      "wins": 0
+    },
+    "Sweep": {
+      "avg_loss": null,
+      "avg_win": null,
+      "costs": 0,
+      "expectancy": null,
+      "gross": 0,
+      "losses": 0,
+      "max_drawdown_inr": 0.0,
+      "max_drawdown_pct_of_capital": 0.0,
+      "net": 0,
+      "profit_factor": null,
+      "profit_factor_note": "no trades",
+      "sample": "INSUFFICIENT SAMPLE: 0 completed trades; at least 30 are needed before any conclusion (100+ preferred). These numbers are not evidence.",
+      "trades": 0,
+      "win_rate_pct": null,
+      "wins": 0
+    }
+  },
+  "generated": "2026-11-02T15:22:12.784132+05:30",
+  "note": "paper trades on live FYERS prices only; no synthetic or artificial trades",
+  "signals": {
+    "ORB": {
+      "accepted": 0,
+      "rejected": 9,
+      "signals": 9,
+      "top_reasons": {
+        "after the entry window (14": 9,
+        "quote": 7,
+        "signal is more than 2 hours old": 9
+      }
+    }
+  },
+  "trades": []
+}
