@@ -73,8 +73,26 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
   <nav class="tabs" aria-label="Paper book">
     <a id="tab-orb" href="?book=orb">ORB book</a>
     <a id="tab-sweep" href="?book=sweep">Liquidity sweep book</a>
+    <a id="tab-eod" href="?book=eod">Daily report</a>
   </nav>
   <div id="errors"></div>
+
+  <section id="eod" hidden>
+    <div class="card"><div class="k" id="eod-date">NIFTY end-of-day</div><div class="sub" id="eod-label"></div></div>
+    <div class="list" id="eod-summary" style="margin-top:10px"></div>
+    <h2>NIFTY</h2>
+    <div class="grid">
+      <div class="card"><div class="k">Close</div><div class="v" id="eod-close">–</div><div class="sub" id="eod-ohlc"></div></div>
+      <div class="card"><div class="k">Daily trend</div><div class="v" id="eod-trend">–</div><div class="sub" id="eod-trend-sub"></div></div>
+      <div class="card"><div class="k">Put-call ratio (OI)</div><div class="v" id="eod-pcr">–</div><div class="sub" id="eod-oi"></div></div>
+      <div class="card"><div class="k">Future</div><div class="v" id="eod-fut">–</div><div class="sub" id="eod-fut-sub"></div></div>
+    </div>
+    <h2>ATM and ITM contracts</h2>
+    <div class="list" id="eod-contracts"></div>
+    <h2>Not in the free data</h2>
+    <div class="card"><div class="sub" id="eod-missing"></div></div>
+  </section>
+  <div id="pnl">
 
   <div class="grid">
     <div class="card"><div class="k">Today's P&amp;L</div><div class="v" id="day-pnl">–</div><div class="sub" id="day-sub"></div></div>
@@ -111,6 +129,7 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
     <h2>Setup decisions today</h2>
     <div class="list" id="decisions"></div>
   </section>
+  </div>
 
   <footer>
     <div id="updated">Not loaded yet.</div>
@@ -124,10 +143,10 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
   var repo = location.pathname.split("/").filter(Boolean)[0];
   var params = new URLSearchParams(location.search);
   // two independent paper books, each with its own virtual capital, ledger and loss limit
-  var book = params.get("book") === "sweep" ? "sweep" : "orb";
+  var book = ["sweep", "eod"].indexOf(params.get("book")) >= 0 ? params.get("book") : "orb";
   var src = params.get("data") ||
     ("https://raw.githubusercontent.com/" + owner + "/" + repo + "/paper-state/" +
-     (book === "sweep" ? "sweep/" : "") + "dashboard/data.json");
+     (book === "eod" ? "eod/latest.json" : (book === "sweep" ? "sweep/" : "") + "dashboard/data.json"));
 
   var inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
   function money(x) { return x === null || x === undefined ? "–" : inr.format(x); }
@@ -210,6 +229,37 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
     }).join("");
   }
 
+  function num(x) { return x === null || x === undefined ? "–" : Number(x).toLocaleString("en-IN"); }
+
+  function px(x) { return x === null || x === undefined ? "–" : Number(x).toFixed(2); }
+
+  function renderEod(r) {
+    document.querySelector("h1").textContent = "Daily report";
+    el("pnl").hidden = true; el("eod").hidden = false;
+    el("status").className = "status Stopped"; el("status-text").textContent = "Report";
+    el("eod-date").textContent = "NIFTY end-of-day, " + r.date + " (expiry " + r.expiry + ")";
+    el("eod-label").textContent = r.label;
+    el("eod-summary").innerHTML = r.summary.map(function (s) { return '<div class="row">' + esc(s) + '</div>'; }).join("");
+    var i = r.index, p = r.previous_day;
+    el("eod-close").textContent = num(i.close);
+    el("eod-ohlc").textContent = "O " + i.open + " · H " + i.high + " · L " + i.low + (p ? " · prev " + p.close : "");
+    el("eod-trend").textContent = r.trend.status; el("eod-trend-sub").textContent = r.trend.detail;
+    var o = r.open_interest;
+    el("eod-pcr").textContent = o.pcr_oi === null ? "–" : o.pcr_oi;
+    el("eod-oi").textContent = "Most CE OI at " + o.max_ce_oi_strike + " · most PE OI at " + o.max_pe_oi_strike;
+    var f = r.future;
+    el("eod-fut").textContent = f.status === "ok" ? num(f.close) : "missing";
+    el("eod-fut-sub").textContent = f.status === "ok" ? ("basis " + f.basis + " · OI " + num(f.oi)) : f.detail;
+    el("eod-contracts").innerHTML = r.contracts.map(function (c) {
+      return '<div class="row"><div class="top"><span>' + esc(c.symbol) + '</span><span>' + esc(c.moneyness + " " + c.option_type) + '</span></div>' +
+        '<dl><div><dt>Close</dt><dd>' + px(c.close) + '</dd></div><div><dt>Settle</dt><dd>' + px(c.settle) + '</dd></div>' +
+        '<div><dt>Per lot</dt><dd>' + money(c.premium_per_lot) + '</dd></div><div><dt>OI</dt><dd>' + num(c.oi) + '</dd></div>' +
+        '<div><dt>OI change</dt><dd>' + num(c.oi_change) + '</dd></div><div><dt>Volume</dt><dd>' + num(c.volume) + '</dd></div></dl></div>';
+    }).join("");
+    el("eod-missing").textContent = r.missing_fields.join(" · ") + ". No trades are simulated from these files.";
+    el("updated").textContent = "Source: NSE public end-of-day files for " + r.date + ".";
+  }
+
   function render(d) {
     status(d);
     var t = d.today, T = d.totals;
@@ -242,7 +292,7 @@ footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
   function load() {
     fetch(src + (src.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error(r.status === 404 ? "no data yet: the bot has not saved a paper-trading run" : "HTTP " + r.status); return r.json(); })
-      .then(render)
+      .then(book === "eod" ? renderEod : render)
       .catch(function (e) {
         el("status").className = "status Stopped"; el("status-text").textContent = "No data";
         el("errors").innerHTML = '<div class="err">' + esc("Could not load data (" + e.message + ").") + '</div>';

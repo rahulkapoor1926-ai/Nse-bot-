@@ -1,0 +1,94 @@
+# Daily NIFTY end-of-day report from NSE's free public files.
+# No login, no credentials, no trades. Runs after NSE publishes the day's files.
+# The report goes to the paper-state branch (eod/); raw NSE files stay in the
+# private Actions cache.
+name: eod-report
+
+on:
+  schedule:
+    - cron: "0 14 * * 1-5"     # 19:30 IST
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Trading day YYYY-MM-DD (blank = today IST)"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-day
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    env:
+      TZ: Asia/Kolkata
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Which day?
+        id: day
+        env:
+          DATE_INPUT: ${{ github.event.inputs.date }}
+        run: |
+          cp config/paper.example.json config/paper.json
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import datetime as dt, os, re
+          from nse_bot import clock
+          cal = clock.Calendar.load("nse_bot/data/nse_holidays.json")
+          raw = os.environ.get("DATE_INPUT", "").strip()
+          if raw and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+              raise SystemExit("date must be YYYY-MM-DD")
+          d = dt.date.fromisoformat(raw) if raw else clock.now_ist().date()
+          print("date=%s" % d.isoformat())
+          print("trading=%s" % str(cal.is_trading_day(d)).lower())
+          PY
+
+      - name: Restore state
+        if: steps.day.outputs.trading == 'true'
+        run: |
+          git config user.name "paper-bot"
+          git config user.email "paper-bot@users.noreply.github.com"
+          if git fetch origin +refs/heads/paper-state:refs/remotes/origin/paper-state; then
+            git worktree add state origin/paper-state
+            git -C state checkout -B paper-state
+          else
+            git worktree add --orphan -b paper-state state
+          fi
+          printf 'instruments.csv\n*.part\nrecordings/\nsweep-recordings/\nlogs/\ndecisions/\neod-raw/\n.tmp-*\n' > state/.gitignore
+
+      - name: Restore NSE files
+        if: steps.day.outputs.trading == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: state/eod-raw
+          key: eod-raw-${{ github.run_id }}
+          restore-keys: eod-raw-
+
+      - name: Unit tests
+        if: steps.day.outputs.trading == 'true'
+        run: python3 -m unittest discover -s tests -p "test_eod.py"
+
+      - name: Build report
+        if: steps.day.outputs.trading == 'true'
+        run: |
+          # NSE can publish late; try for up to an hour
+          for i in 1 2 3 4 5 6 7; do
+            python3 -m nse_bot --config config/paper.json eod-report --date "${{ steps.day.outputs.date }}" && exit 0
+            echo "not available yet, retrying in 10 minutes"; sleep 600
+          done
+          exit 1
+
+      - name: Save report
+        if: always() && steps.day.outputs.trading == 'true'
+        run: scripts/save_state.sh
+
+      - name: Save NSE files
+        if: always() && steps.day.outputs.trading == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: state/eod-raw
+          key: eod-raw-${{ github.run_id }}

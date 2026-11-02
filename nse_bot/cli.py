@@ -274,6 +274,16 @@ def cmd_dashboard(a):
     print(json.dumps({"bot": doc["bot"], "today": doc["today"], "totals": doc["totals"]}, indent=2))
 
 
+def cmd_eod_report(a):
+    from . import eod
+    cfg, cal, cm = _common(a.config)
+    day = dt.date.fromisoformat(a.date) if a.date else _now(a).date()
+    rep = eod.build(day, cal, a.raw, a.sessions)
+    path = eod.write(rep, a.out)
+    print("\n".join(rep["summary"]))
+    print("report: %s (no trades simulated: the free NSE files have no bid/ask)" % path)
+
+
 def cmd_record(a):
     from .data import recorder
     cfg, cal, cm, m, md = _sahi_ctx(a)
@@ -376,6 +386,11 @@ def build_parser():
             s.add_argument("--sweep", action="store_true",
                            help="record 1m index + current-month future bars and option snapshots (sweep_reversal data)")
         s.set_defaults(fn=fn)
+    s = sub.add_parser("eod-report", help="daily NIFTY report from NSE's free end-of-day files (no login, no trades)")
+    s.add_argument("--date", help="trading day YYYY-MM-DD (default: today IST)")
+    s.add_argument("--out", default="state/eod"); s.add_argument("--raw", default="state/eod-raw")
+    s.add_argument("--sessions", type=int, default=40, help="daily bars of history for the trend")
+    s.set_defaults(fn=cmd_eod_report)
     s = sub.add_parser("build-dataset")
     s.add_argument("--recordings", default="state/recordings"); s.add_argument("--out", required=True)
     s.add_argument("--name", required=True); s.add_argument("--interval", type=int, default=5)

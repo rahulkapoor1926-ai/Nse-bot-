@@ -8,10 +8,13 @@
 # branch and are saved after each job, so the lockout survives restarts.
 name: paper-day
 
+# Schedule paused on 2026-11-02 at jojo's request: no SAHI credentials will be
+# provided. Manual runs still work if a read-only data key is ever added.
+# To resume, restore:
+#   schedule:
+#     - cron: "35 3 * * 1-5"    # 09:05 IST, morning half (exits 12:15)
+#     - cron: "40 6 * * 1-5"    # 12:10 IST, afternoon half (exits after the close)
 on:
-  schedule:
-    - cron: "35 3 * * 1-5"    # 09:05 IST, morning half (exits 12:15)
-    - cron: "40 6 * * 1-5"    # 12:10 IST, afternoon half (exits after the close)
   workflow_dispatch:
     inputs:
       until:
@@ -65,7 +68,7 @@ jobs:
           fi
           # broker/exchange data, logs and full decision reports (quotes, candles) never
           # go to the public branch; only one-line decision summaries do
-          printf 'instruments.csv\n*.part\nrecordings/\nsweep-recordings/\nlogs/\ndecisions/\n.tmp-*\n' > state/.gitignore
+          printf 'instruments.csv\n*.part\nrecordings/\nsweep-recordings/\nlogs/\ndecisions/\neod-raw/\n.tmp-*\n' > state/.gitignore
           git -C state rm -r -q --cached --ignore-unmatch instruments.csv recordings sweep-recordings logs decisions sweep/logs sweep/decisions
           mkdir -p state/recordings state/sweep-recordings state/logs state/sweep
 

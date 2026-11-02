@@ -35,6 +35,7 @@ Run every command from the repository root (config paths are relative to it).
 | `build-dataset --out DIR --name N [--kind equity\|sweep]` | turns recordings into a dataset for `gate` |
 | `paper --strategy FILE [--dataset DIR] [--until HH:MM] ...` | paper-trading loop; repeat `--strategy` to run stocks first, then options; `--until` ends a scheduled run |
 | `risk-status`, `report` | today's lockout state; read-only SIMULATED report |
+| `eod-report [--date D]` | daily NIFTY report from NSE's free end-of-day files: no login, no trades (`docs/nse/EOD_REPORT.md`) |
 | `dashboard` | rebuilds `state/dashboard/data.json` for the web dashboard (read-only) |
 | `news --feeds FILE` | headlines from your feeds plus scheduled events |
 | `pelosi` | why the US Pelosi tracker has no Indian counterpart here |
