@@ -1,5 +1,7 @@
 instruments.csv
 *.part
 recordings/
+sweep-recordings/
 logs/
+decisions/
 .tmp-*

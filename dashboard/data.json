@@ -6,10 +6,12 @@
     "stale_after_seconds": 180,
     "status": "Stopped"
   },
+  "by_strategy": {},
   "capital_inr": 20000.0,
   "daily_loss_limit_inr": 500,
   "daily_profit_stop_inr": 2000,
   "days": [],
+  "decisions_today": [],
   "equity_curve": [
     {
       "equity": 20000.0,
@@ -17,14 +19,14 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-10-30T20:15:46.776376+05:30",
+  "generated_at": "2026-11-02T09:59:32.470284+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,
   "live_orders_enabled": false,
   "open_positions": [],
   "today": {
-    "date": "2026-10-30",
+    "date": "2026-11-02",
     "lock_reason": null,
     "locked": false,
     "pnl": 0.0,
