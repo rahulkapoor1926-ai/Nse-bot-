@@ -15,7 +15,7 @@ failure never turns into "position closed" or "price = 0".
 
 import logging
 
-from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, options_desk, orderflow, quotes, rr, scanner, volume_profile
+from . import budget, clock, entry, exit as exit_mod, feedcheck, forward, gate, options_desk, orderflow, quotes, rr, scanner, volume_profile
 from .errors import NseBotError
 
 log = logging.getLogger("nse_bot")
@@ -183,6 +183,7 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         ctx.alerts.emit("candidate", key, "%s %s: %s" % (cand["status"], c.symbol, "; ".join(
             cand.get("reasons_for") or cand["reasons"])), now)
         if cand["status"] != "CANDIDATE":
+            forward.orb_signal(ctx, now, strategy, cand, row)
             out.append(cand)
             continue
         plan = exit_mod.plan(cand["entry_price"], c, strategy, ctx.cfg, now.date())
@@ -203,6 +204,7 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
             cand["options_desk"] = options_desk.for_entry(ctx, "orb", row["underlying"], c.option_type, c.expiry, now)
         verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
         cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
+        forward.orb_signal(ctx, now, strategy, cand, row)
         out.append(cand)
         if verdict["verdict"] != "PASS":
             continue

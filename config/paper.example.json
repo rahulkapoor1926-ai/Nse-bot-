@@ -49,5 +49,6 @@
   "gate_allow_estimated_spread": true,
   "live_orders_enabled": false,
   "data_source": "fyers",
-  "orderflow_confirmation": "required"
+  "orderflow_confirmation": "required",
+  "forward_validation": false
 }

@@ -299,6 +299,16 @@ def _dashboard(cfg, now, status, marks=None, error=None, master=None):
         LOG.error("dashboard update failed: %s", e)
 
 
+def cmd_forward_report(a):
+    from . import forward
+    cfgs = [config.load(p) for p in [a.config] + a.also_config]
+    books = [(os.path.splitext(os.path.basename(p))[0], c["state_dir"]) for p, c in zip([a.config] + a.also_config, cfgs)]
+    out = a.out or os.path.join(cfgs[0]["state_dir"], "forward")
+    doc, md = forward.write_report(books, cfgs[0]["capital_inr"], clock.now_ist(), out)
+    print(md)
+    print("written: %s" % os.path.join(out, "report.md"))
+
+
 def cmd_notify_summary(a):
     from .broker.paper import Ledger
     now = clock.now_ist()
@@ -459,6 +469,10 @@ def build_parser():
     s.add_argument("--underlying", default="NIFTY", help="for --kind sweep")
     s.set_defaults(fn=cmd_build_dataset)
     sub.add_parser("risk-status").set_defaults(fn=cmd_risk_status)
+    s = sub.add_parser("forward-report", help="forward paper validation statistics (ORB and Sweep separately)")
+    s.add_argument("--also-config", action="append", default=[], help="another book's config to include")
+    s.add_argument("--out", help="output folder (default <state_dir>/forward)")
+    s.set_defaults(fn=cmd_forward_report)
     s = sub.add_parser("notify-summary", help="send the daily paper P&L summary (reporting only)")
     s.add_argument("--also-config", action="append", default=[], help="another book's config to include")
     s.add_argument("--date", help="YYYY-MM-DD (default today IST)")

@@ -30,7 +30,7 @@ def cfg(state_dir, **over):
         "max_spread_pct": 3, "min_top_qty_lots": 2, "min_volume_today": 10000,
         "min_open_interest": 50000, "slippage_ticks": 2, "max_consecutive_errors": 3,
         "event_blackout_minutes": 30, "gate_min_examples": 10000, "gate_min_oos_trades": 100,
-        "data_source": "sahi", "orderflow_confirmation": "off", "state_dir": state_dir, "holidays_file": HOLIDAYS, "costs_file": COSTS,
+        "data_source": "sahi", "orderflow_confirmation": "off", "forward_validation": False, "state_dir": state_dir, "holidays_file": HOLIDAYS, "costs_file": COSTS,
         "events_file": os.path.join(ROOT, "config", "events.example.json"),
         "instruments_enabled": ["equity", "etf", "index_options"],
         "equity_universe_file": os.path.join(ROOT, "config", "universe.example.json"),

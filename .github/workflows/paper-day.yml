@@ -20,6 +20,11 @@ on:
       until:
         description: "IST time HH:MM to stop (blank = session close)"
         required: false
+      book:
+        description: "standard = gated paper books; forward = forward-validation books (approved 2026-11-02)"
+        type: choice
+        options: [standard, forward]
+        default: standard
 
 permissions:
   contents: write
@@ -46,10 +51,20 @@ jobs:
 
       - name: Trading day?
         id: day
+        env:
+          BOOK: ${{ github.event.inputs.book || 'standard' }}
         run: |
           cp config/paper.example.json config/paper.json
           # independent book for sweep_reversal: own ledger, risk lockout and dashboard
           python3 -c "import json; c=json.load(open('config/paper.json')); c['state_dir']='state/sweep'; json.dump(c, open('config/paper-sweep.json','w'), indent=2)"
+          if [ "$BOOK" = "forward" ]; then
+            # forward validation: separate ledgers; trades may go ahead while the backtest gate has no data
+            # (INSUFFICIENT DATA / NOT EVALUATED). Every other limit is unchanged.
+            for pair in "paper.json state/forward/orb" "paper-sweep.json state/forward/sweep"; do
+              set -- $pair
+              python3 -c "import json,sys; c=json.load(open('config/'+sys.argv[1])); c['state_dir']=sys.argv[2]; c['forward_validation']=True; json.dump(c, open('config/'+sys.argv[1],'w'), indent=2)" "$1" "$2"
+            done
+          fi
           python3 -m nse_bot --config config/paper.json validate-config
           python3 -m nse_bot --config config/paper-sweep.json validate-config
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
@@ -74,7 +89,7 @@ jobs:
           # go to the public branch; only one-line decision summaries do
           printf 'instruments.csv\ninstruments-fyers.csv*\n*.part\nrecordings/\nsweep-recordings/\nlogs/\ndecisions/\neod-raw/\n.tmp-*\n' > state/.gitignore
           git -C state rm -r -q --cached --ignore-unmatch instruments.csv recordings sweep-recordings logs decisions sweep/logs sweep/decisions
-          mkdir -p state/recordings state/sweep-recordings state/logs state/sweep
+          mkdir -p state/recordings state/sweep-recordings state/logs state/sweep state/forward/orb state/forward/sweep
 
       - name: Restore private data (instrument list, recordings, logs)
         if: steps.day.outputs.trading == 'true'
@@ -150,6 +165,9 @@ jobs:
           # daily P&L summary for both books (reporting only)
           python3 -m nse_bot --config config/paper.json notify-summary --also-config config/paper-sweep.json \
             --master state/instruments-fyers.csv || true
+          # forward validation statistics, ORB and Sweep separately (reporting only)
+          python3 -m nse_bot --config config/paper.json forward-report --also-config config/paper-sweep.json \
+            --out "$(python3 -c "import json; print(json.load(open('config/paper.json'))['state_dir'])")/forward" || true
           echo "ORB paper exit $PAPER, sweep paper exit $SPAPER"
           [ "$PAPER" -eq 0 ] && [ "$SPAPER" -eq 0 ]
 

@@ -130,6 +130,9 @@ SCHEMA = {
     "data_source": _choice("sahi", "fyers"),
     # order-flow confirmation of ORB / sweep entries (orderflow.py); "required" blocks when not confirmed
     "orderflow_confirmation": _choice("required", "off"),
+    # forward validation book (forward.py, approved by jojo 2026-11-02): paper entries may go ahead while
+    # the backtest gate has INSUFFICIENT DATA / NOT EVALUATED; REJECTED or STALE still block. Own state_dir.
+    "forward_validation": _bool,
 }
 
 
@@ -167,6 +170,8 @@ def _cross_checks(c):
         out.append("entry window and flat_by must sit inside the NSE session 09:15-15:30 IST")
     if c["expiry_day_flat_by"] > c["flat_by"]:
         out.append("expiry_day_flat_by must not be later than flat_by")
+    if c["forward_validation"] and "forward" not in c["state_dir"].replace("\\", "/").split("/"):
+        out.append("forward_validation needs its own state_dir with a 'forward' folder (separate ledger)")
     for u in c["underlyings"]:
         if u not in c["index_names"]:
             out.append("index_names has no entry for %s" % u)

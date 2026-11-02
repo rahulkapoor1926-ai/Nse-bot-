@@ -14,6 +14,9 @@ per-trade cap and what is left of the daily limit.
 import os
 
 from . import clock, rr, state
+
+# gate states a forward-validation book may trade through (no evidence yet); REJECTED/STALE always block
+FORWARD_GATE_OK = ("INSUFFICIENT DATA", "NOT EVALUATED")
 from .errors import StateCorrupt
 
 WARNING = ("Limits are enforced on fills the bot knows about. Slippage, gaps and failed exits can "
@@ -145,8 +148,12 @@ class RiskBook(object):
             r.append("outside the entry window %s-%s IST" % (cfg["no_entries_before"], cfg["no_entries_after"]))
         if order.get("side") != "BUY":
             r.append("only long option entries (BUY) are allowed")
+        forward_note = None
         if gate_status != "APPROVED":
-            r.append("validation gate: %s" % gate_status)
+            if cfg.get("forward_validation") and str(gate_status).startswith(FORWARD_GATE_OK):
+                forward_note = "validation gate: %s (forward validation book, paper only: not blocking)" % gate_status
+            else:
+                r.append("validation gate: %s" % gate_status)
         r.extend("quote: " + p for p in (quote_problems or []))
         if fingerprint(order) in self.doc["entries"]:
             r.append("duplicate: this signal was already entered today")
@@ -165,6 +172,6 @@ class RiskBook(object):
             r.append("reward/risk below %.2f" % cfg["min_reward_risk"])
         if not exit_plan or not rr.ok(exit_plan.get("net"), cfg):
             r.append(rr.why((exit_plan or {}).get("net"), cfg))
-        return {"verdict": "BLOCK" if r else "PASS", "reasons": r, "warning": WARNING,
+        return {"verdict": "BLOCK" if r else "PASS", "reasons": r, "warning": WARNING, "forward_note": forward_note,
                 "day_pnl": round(self.day_pnl(), 2), "trades": self.doc["trades"],
                 "remaining_loss_inr": round(self.remaining_loss(cfg), 2)}

@@ -10,7 +10,7 @@ Data per underlying (read-only SAHI calls, fetched once per new closed minute):
 
 import datetime as dt
 
-from . import budget, clock, contract_select, decisions, entry, feedcheck, gate, options_desk, orderflow, quotes, scanner, sweep, volume_profile
+from . import budget, clock, contract_select, decisions, entry, feedcheck, forward, gate, options_desk, orderflow, quotes, scanner, sweep, volume_profile
 from .errors import NseBotError
 
 _CACHE = {}
@@ -82,6 +82,7 @@ def look(ctx, now, strategy):
         if rep["decision"] == "SETUP" and chosen:
             out.extend(_execute(ctx, now, strategy, u, rep, chosen, u_stop))
         decisions.record(ctx.cfg["state_dir"], rep, day)
+        forward.sweep_signal(ctx, now, strategy, u, rep)
         if any(x.get("entered") for x in out):
             break
     return out
