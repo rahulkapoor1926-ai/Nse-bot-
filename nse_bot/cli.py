@@ -450,14 +450,22 @@ def cmd_signal_study(a):
                 audit.append({"series": label, "size": size, "from": t0.date().isoformat(),
                               "to": t1.date().isoformat(), "bars": len(got), "result": "ok"})
                 bars.extend(got)
+                return True
             except NseBotError as e:
-                if t1 - t0 > dt.timedelta(days=2):          # refused: halve, to find where FYERS's history starts
-                    mid = t0 + (t1 - t0) / 2
-                    window(t0, mid)
-                    window(mid, t1)
-                else:
+                if "calls for the day" in str(e) or t1 - t0 <= dt.timedelta(days=2):
                     audit.append({"series": label, "size": size, "from": t0.date().isoformat(),
                                   "to": t1.date().isoformat(), "bars": 0, "result": str(e)[:160]})
+                    return False
+                # Refused (FYERS keeps a limited intraday history): the later half may still be served.
+                # If it is, the boundary lies in the earlier half; if not, the earlier half is older still.
+                mid = t0 + (t1 - t0) / 2
+                if window(mid, t1):
+                    window(t0, mid)
+                else:
+                    audit.append({"series": label, "size": size, "from": t0.date().isoformat(),
+                                  "to": mid.date().isoformat(), "bars": 0,
+                                  "result": "not requested: a later window was refused too (%s)" % str(e)[:100]})
+                return False
         t0 = frm
         while t0 < to:
             t1 = min(to, t0 + dt.timedelta(days=90))
@@ -476,6 +484,14 @@ def cmd_signal_study(a):
     audit.append({"series": "NIFTY index", "size": "1d", "from": dt.date(first_day.year, 1, 1).isoformat(),
                   "to": end.date().isoformat(), "bars": len(daily), "result": "ok"})
     u1 = fetch(iid, "1m", start, end, "NIFTY index")
+    fut = m.current_future("NIFTY", end.date())
+    f1, fut_note = [], None
+    if fut is None:
+        fut_note = "no current NIFTY future in the symbol master"
+    else:
+        f1 = fetch(fut.instrument_id, "1m", start, end, "NIFTY future %s" % md.symbols.get(fut.instrument_id))
+        if not f1:
+            fut_note = "FYERS served no 1-minute future bars for this window"
     # Older than the 1-minute history: FYERS's own 5-minute bars, if it serves them (ORB runs on 5m bars).
     u5 = []
     first_1m = clock.at(u1[0][0].date(), "00:00") if u1 else end
@@ -488,14 +504,6 @@ def cmd_signal_study(a):
     with open(cfg["holidays_file"], encoding="utf-8") as fh:
         file_years = json.load(fh)["years"]
     cal, cal_added = SS.observed_calendar(file_years, [b[0].date() for b in daily], per_day, end.date())
-    fut = m.current_future("NIFTY", end.date())
-    f1, fut_note = [], None
-    if fut is None:
-        fut_note = "no current NIFTY future in the symbol master"
-    else:
-        f1 = fetch(fut.instrument_id, "1m", start, end, "NIFTY future %s" % md.symbols.get(fut.instrument_id))
-        if not f1:
-            fut_note = "FYERS served no 1-minute future bars for this window"
     strategies = {name: _strategy(path) for name, path in (("orb", a.orb_strategy), ("sweep", a.sweep_strategy))}
 
     def cover(bars):
