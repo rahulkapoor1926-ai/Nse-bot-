@@ -1,0 +1,49 @@
+{
+ "url": "https://trial-sporting-join-flame.trycloudflare.com",
+ "up_until_ist": "04:04",
+ "run_id": "41487480251",
+ "started_at": "2026-11-02T22:34:59",
+ "signed_in_checks": {
+  "/": "200",
+  "/static/app.js": "200",
+  "/api/session": "200",
+  "/api/overview": "200",
+  "/api/market": "200",
+  "/api/signals": "200",
+  "/api/trades": "200",
+  "/api/performance": "200",
+  "/api/logs": "200",
+  "/api/reports": "200",
+  "/api/study": "200"
+ },
+ "study": {
+  "available": true,
+  "generated": "2026-11-02T22:11:30.468380+05:30",
+  "coverage": {
+   "future": {
+    "bars": 93265,
+    "first": "2025-11-03",
+    "last": "2026-11-02",
+    "note": null,
+    "sessions": 247,
+    "symbol": "NSE:NIFTY26NOVFUT"
+   },
+   "index": {
+    "bars": 92642,
+    "first": "2025-11-03",
+    "last": "2026-11-02",
+    "sessions": 247
+   },
+   "index_5m_older": {
+    "bars": 0,
+    "first": null,
+    "last": null,
+    "sessions": 0
+   }
+  },
+  "ORB_signals": 228,
+  "Sweep_signals": 0,
+  "options_pnl": "NOT AVAILABLE"
+ },
+ "sign_in_key": "sent to Telegram only"
+}
