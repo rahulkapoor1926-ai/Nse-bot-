@@ -9,7 +9,7 @@ on:
       probe:
         description: "extra read-only probe to run after the check"
         type: choice
-        options: [none, orderflow]
+        options: [none, orderflow, profile]
         default: none
 
 permissions:
@@ -38,3 +38,10 @@ jobs:
           FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
           FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
         run: python3 scripts/probe_orderflow.py
+      - name: Volume-profile data probe (read-only)
+        if: github.event.inputs.probe == 'profile'
+        env:
+          FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/probe_profile.py
