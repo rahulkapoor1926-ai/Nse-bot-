@@ -78,6 +78,7 @@ class Notifier(object):
         self.path = os.path.join(self.dir, "%s.json" % day.isoformat())
         self.every = int(cfg.get("notify_update_minutes", 5)) * 60
         self.source = cfg.get("data_source") or "unknown"
+        self.label = cfg.get("notify_label") or ""    # e.g. a rehearsal banner on every message
         self.token = (env.get("TELEGRAM_BOT_TOKEN") or "").strip()
         self.chat = (env.get("TELEGRAM_CHAT_ID") or "").strip()
         self.transport, self.out = transport, out
@@ -97,6 +98,8 @@ class Notifier(object):
         """Never raises. Returns True when Telegram accepted the message."""
         ok = False
         err = None
+        if self.label:
+            text = "%s\n%s" % (self.label, text)
         try:
             if self.channel == "telegram" and self.st["failures"] < MAX_FAILURES:
                 try:

@@ -1,9 +1,18 @@
-# Sends one test message to your Telegram so you can confirm notifications reach your phone.
-# No market data, no trading. Needs the TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets.
+# mode "test": sends one test message to your Telegram (no market data, no trading).
+# mode "rehearsal": end-to-end check of every P&L notification with LIVE FYERS prices and a
+#   throwaway paper ledger in a temp directory (never state/ or paper-state); market hours only,
+#   needs today's FYERS_AUTH_CODE. Messages carry a REHEARSAL banner. See scripts/notify_rehearsal.py.
+# Paper only either way: the bot has no order endpoint.
 name: notify-test
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = one message; rehearsal = full flow on live FYERS prices (~12 min)"
+        type: choice
+        options: [test, rehearsal]
+        default: test
 
 permissions:
   contents: read
@@ -11,7 +20,7 @@ permissions:
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     env:
       TZ: Asia/Kolkata
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -19,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Send a test notification
+        if: github.event.inputs.mode != 'rehearsal'
         run: |
           python3 - <<'PY'
           import sys, tempfile
@@ -34,3 +44,11 @@ jobs:
           print("delivered to Telegram" if ok else "NOT delivered: see the error above")
           sys.exit(0 if ok else 1)
           PY
+
+      - name: Rehearse the full notification flow (live FYERS prices, throwaway ledger)
+        if: github.event.inputs.mode == 'rehearsal'
+        env:
+          FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/notify_rehearsal.py
