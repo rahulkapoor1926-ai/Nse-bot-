@@ -1,0 +1,1 @@
+{"bias": "bullish", "decision": "SKIP", "evaluated_at": "2026-11-02T12:47:46.682705+05:30", "skip_reason": "structure: no BOS/CHoCH between the sweep and the confirmation", "strategy": "sweep-reversal", "underlying": "NIFTY", "why": null}

@@ -1,0 +1,1 @@
+{"data": {}, "key": "sweep-data-NIFTY-1247", "kind": "system_error", "message": "sweep_reversal data fetch failed for NIFTY: FYERS rate limit hit on /history: treated as missing data", "time": "2026-11-02T12:47:15.671750+05:30"}

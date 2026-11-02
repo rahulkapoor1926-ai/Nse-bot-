@@ -1,17 +1,36 @@
 {
   "bot": {
-    "heartbeat": null,
+    "heartbeat": "2026-11-02T12:51:50.549390+05:30",
     "last_error": null,
-    "reported_status": null,
+    "reported_status": "running",
     "stale_after_seconds": 180,
-    "status": "Stopped"
+    "status": "Running"
   },
   "by_strategy": {},
   "capital_inr": 20000.0,
   "daily_loss_limit_inr": 500,
   "daily_profit_stop_inr": 2000,
-  "days": [],
-  "decisions_today": [],
+  "data_source": "fyers",
+  "days": [
+    {
+      "date": "2026-11-02",
+      "lock_reason": null,
+      "locked": false,
+      "realized_pnl": 0.0,
+      "trades": 0
+    }
+  ],
+  "decisions_today": [
+    {
+      "bias": "bullish",
+      "decision": "SKIP",
+      "evaluated_at": "2026-11-02T12:47:46.682705+05:30",
+      "skip_reason": "structure: no BOS/CHoCH between the sweep and the confirmation",
+      "strategy": "sweep-reversal",
+      "underlying": "NIFTY",
+      "why": null
+    }
+  ],
   "equity_curve": [
     {
       "equity": 20000.0,
@@ -19,7 +38,7 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-11-02T09:59:32.560071+05:30",
+  "generated_at": "2026-11-02T12:51:50.549390+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,

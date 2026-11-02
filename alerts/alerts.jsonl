@@ -1,0 +1,8 @@
+{"data": {}, "key": "10100000001660-0945", "kind": "candidate", "message": "REJECTED ITC: signal is more than 2 hours old; quote: thin bid: 544 units < 757", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "10100000001922-1040", "kind": "candidate", "message": "REJECTED KOTAKBANK: signal is more than 2 hours old; quote: thin ask: 1 units < 434", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "101000000011483-0955", "kind": "candidate", "message": "REJECTED LT: signal is more than 2 hours old; quote: thin bid: 26 units < 51; quote: thin ask: 20 units < 51", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "101000000010576-0945", "kind": "candidate", "message": "REJECTED NIFTYBEES: signal is more than 2 hours old; quote: thin ask: 223 units < 754", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "10100000002885-0940", "kind": "candidate", "message": "REJECTED RELIANCE: signal is more than 2 hours old", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "10100000003045-1035", "kind": "candidate", "message": "REJECTED SBIN: signal is more than 2 hours old", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "101000000011536-0950", "kind": "candidate", "message": "REJECTED TCS: signal is more than 2 hours old; quote: timestamp 5s in the future: clock or feed problem", "time": "2026-11-02T12:47:15.610854+05:30"}
+{"data": {}, "key": "101126110353940-0950", "kind": "candidate", "message": "REJECTED NSE:NIFTY26N0323300CE: signal is more than 2 hours old; quote: timestamp 5s in the future: clock or feed problem", "time": "2026-11-02T12:47:15.610854+05:30"}
