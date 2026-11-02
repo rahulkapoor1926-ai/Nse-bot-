@@ -9,7 +9,7 @@ on:
       probe:
         description: "extra read-only probe to run after the check"
         type: choice
-        options: [none, orderflow, profile]
+        options: [none, orderflow, profile, options]
         default: none
 
 permissions:
@@ -45,3 +45,10 @@ jobs:
           FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
           FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
         run: python3 scripts/probe_profile.py
+      - name: Options-desk data audit (read-only)
+        if: github.event.inputs.probe == 'options'
+        env:
+          FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/probe_options_desk.py
