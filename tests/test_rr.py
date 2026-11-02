@@ -160,6 +160,22 @@ class Backtest(test_backtest_gate.Base):
         self.assertGreater(b["executed"], 0)
 
 
+class ShippedOrb(unittest.TestCase):
+    """jojo approved ORB target 2.5R on 2026-11-02 so ORB can meet 1:2 net; the stop stays 20%."""
+
+    def test_shipped_orb_strategies(self):
+        cm = CostModel.load(synth.COSTS)
+        for name in ("orb15.example.json", "orb15-equity.example.json"):
+            s = json.load(open(os.path.join(ROOT, "config", "strategies", name)))
+            self.assertEqual((s["target_r"], s["stop_pct"]), (2.5, 20 if "equity" not in name else s["stop_pct"]))
+        s = json.load(open(os.path.join(ROOT, "config", "strategies", "orb15.example.json")))
+        ask, slip = 30.0, 0.10
+        entry = ask + slip
+        stop = ask * (1 - s["stop_pct"] / 100.0)
+        target = ask + s["target_r"] * (ask - stop)
+        self.assertGreaterEqual(rr.net(entry, stop - slip, target - slip, 65, cm, DAY)["net_reward_risk"], 2.0)
+
+
 class NeverWiden(unittest.TestCase):
     def test_no_code_moves_a_stop_after_planning(self):
         hits = []

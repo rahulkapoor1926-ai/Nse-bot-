@@ -34,8 +34,7 @@ The 1:2 rule only measures the plan; it never moves a stop or target to make a t
   backtest has no Greeks).
 
 **Consequences to know:**
-- ORB with `target_r: 2` is exactly 1:2 before costs, so it is always below 1:2 net and will
-  **never trade** under this rule. Raising `target_r` is a strategy change and needs jojo's approval.
+- ORB `target_r` raised from 2 to 2.5 (jojo approved, 2026-11-02): 2.0 before costs could never be 1:2 net.
 - A 20% premium stop on one NIFTY lot (65) above a premium of about Rs 38 risks more than the
   Rs 500 daily limit, so sizing already blocks most ORB trades. Unchanged.
 

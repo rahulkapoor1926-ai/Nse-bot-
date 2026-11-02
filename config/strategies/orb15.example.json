@@ -6,7 +6,7 @@
   "interval_minutes": 5,
   "strike_offset": 0,
   "stop_pct": 20,
-  "target_r": 2,
+  "target_r": 2.5,
   "entry_delay_bars": 1,
   "max_signals_per_day": 1
 }
