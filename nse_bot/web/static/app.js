@@ -293,14 +293,25 @@ function renderStudy(j) {
     "\nSweep days not evaluable: " + JSON.stringify((j.Sweep || {}).not_evaluable || {}) +
     "\nCalendar from observed sessions (years without an NSE circular in the bot):\n" + (calTxt || "none");
   monthBars(j);
+  renderOutcomes(j); renderOptionAudit(j); renderGaps(j); renderSweepAudit(j);
   var all = [];
   ["ORB", "Sweep"].forEach(function (f) { ((j[f] || {}).signals || []).forEach(function (x) { all.push(x); }); });
   all.sort(function (a, b) { return String(b.signal_time).localeCompare(String(a.signal_time)); });
   if (!all.length) empty(list, "no signals in the covered period");
+  var oc = {};
+  (((j.ORB_index_outcomes || {}).rows) || []).forEach(function (r) { oc[r.day + r.signal_time] = r; });
   all.slice(0, 400).forEach(function (x) {
-    item(list, x.day + " " + hhmm(x.signal_time) + " · " + x.family, pill(x.option_type, x.option_type === "CE" ? "ok" : "bad"),
-      ["Trigger " + num(x.trigger_close) + " · target strike " + num(x.target_strike, 0) + (x.entry_window ? " · entry " + hhmm(x.entry_window[0]) + "–" + hhmm(x.entry_window[1]) : ""),
-       "Data " + (x.data || "1m") + (x.regime ? " · regime " + x.regime : "") + " · option fill/exit: NOT AVAILABLE · tap to chart"]);
+    var o = oc[x.day + x.signal_time], kind = o ? o.outcome : null;
+    var pk = kind === "TARGET" ? "ok" : kind === "SL" ? "bad" : "warn";
+    var right = el("span", "");
+    right.appendChild(pill(x.option_type, x.option_type === "CE" ? "ok" : "bad"));
+    if (kind) { right.appendChild(document.createTextNode(" ")); right.appendChild(pill(kind, pk)); }
+    item(list, x.day + " " + hhmm(x.signal_time) + " · " + x.family, right,
+      ["Trigger " + num(x.trigger_close) + " · target strike " + num(x.target_strike, 0) + (x.data ? " · data " + x.data : "") + (x.regime ? " · " + x.regime : ""),
+       o && o.entry !== undefined ? "Index entry " + num(o.entry) + " at " + hhmm(o.entry_time).slice(0, 5) + " · stop " + num(o.stop) + (o.target ? " · target " + num(o.target) : "") +
+         (o.exit_time ? " · exit " + (o.exit === null ? "—" : num(o.exit)) + " at " + hhmm(o.exit_time).slice(0, 5) : "") +
+         (o.r_multiple !== undefined ? " · " + (o.r_multiple > 0 ? "+" : "") + o.r_multiple + "R (" + num(o.index_points) + " pts)" : "") : (o ? o.reason : ""),
+       "Option fill/exit: NOT AVAILABLE · tap to chart"]);
     list.lastChild.style.cursor = "pointer";
     list.lastChild.addEventListener("click", function () { pickDay(x.day); window.scrollTo(0, $("study-day").getBoundingClientRect().top + window.scrollY - 80); });
   });
@@ -309,6 +320,80 @@ function renderStudy(j) {
   (j.chart_days || []).slice().reverse().forEach(function (dd) { var o = el("option", "", dd); o.value = dd; sel.appendChild(o); });
   if (!ST.day && j.chart_days && j.chart_days.length) pickDay(j.chart_days[j.chart_days.length - 1]);
   else if (ST.day) sel.value = ST.day;
+}
+function renderOutcomes(j) {
+  var io = j.ORB_index_outcomes || {}, m = io.model || {}, sm = io.summary || {}, t = sm.totals || {};
+  var st = clear($("io-stats")), mo = clear($("io-month"));
+  $("io-note").textContent = String(sm.note || "not in this study file").replace("INDEX-BASED, NOT OPTION P&L. ", "");
+  if (!io.model) { empty(mo, "run the signal-study workflow again to compute outcomes"); return; }
+  stat(st, "Target hits", num(t.TARGET, 0)); stat(st, "SL hits", num(t.SL, 0));
+  stat(st, "Time exits", num(t["TIME EXIT"], 0)); stat(st, "Ambiguous", num(t.AMBIGUOUS, 0));
+  stat(st, "Win rate", m.win_rate_pct === null ? "—" : m.win_rate_pct + "%");
+  stat(st, "Profit factor", m.profit_factor === null ? "—" : m.profit_factor);
+  stat(st, "Net (R)", (m.net_r > 0 ? "+" : "") + m.net_r + "R", sign(m.net_r));
+  stat(st, "Expectancy", m.expectancy_r + "R / trade", sign(m.expectancy_r));
+  stat(st, "Max drawdown", m.max_drawdown_r + "R"); stat(st, "Worst losing streak", m.max_consecutive_losses);
+  var h = m.hypothetical_inr || {};
+  stat(st, "Index model ₹ (hypothetical)", rs(h.start) + " → " + rs(h.end), sign(h.net));
+  stat(st, "Index model max DD ₹", rs(h.max_drawdown));
+  mo.appendChild(el("div", "small warn", m.label || ""));
+  // monthly net R bars (diverging around 0)
+  var bm = m.by_month || {}, keys = Object.keys(bm).sort();
+  var svg = sv("svg", { viewBox: "0 0 320 150", "class": "bars", "aria-label": "Net R per month" }, mo);
+  var mx = 1; keys.forEach(function (k) { mx = Math.max(mx, Math.abs(bm[k].net_r)); });
+  var W = 320, top = 8, bot = 18, H = 150, z = top + (H - top - bot) / 2, gw = (W - 24) / Math.max(1, keys.length);
+  sv("line", { x1: 24, x2: W, y1: z, y2: z, "class": "grid" }, svg);
+  var t1 = sv("text", { x: 0, y: top + 6 }, svg); t1.textContent = "+" + Math.round(mx) + "R";
+  var t2 = sv("text", { x: 0, y: H - bot }, svg); t2.textContent = "-" + Math.round(mx) + "R";
+  var tip = el("div", "small muted", "Tap a month for its numbers."); 
+  keys.forEach(function (k, i) {
+    var v = bm[k].net_r, hgt = Math.abs(v) / mx * (H - top - bot) / 2, x = 24 + i * gw + gw * 0.2;
+    sv("rect", { x: x, y: v >= 0 ? z - hgt : z, width: Math.max(2, gw * 0.6), height: Math.max(hgt, 1), rx: 2, "class": v >= 0 ? "c-up" : "c-dn" }, svg);
+    var hit = sv("rect", { x: 24 + i * gw, y: 0, width: gw, height: H, fill: "transparent" }, svg);
+    hit.addEventListener("click", function () { tip.textContent = k + ": " + bm[k].trades + " trades, " + bm[k].wins + " wins, " + bm[k].losses + " losses, net " + v + "R (index model " + rs(bm[k].hypothetical_inr) + ")"; });
+    if (keys.length <= 12 || i % 2 === 0) { var tt = sv("text", { x: 24 + i * gw + gw / 2, y: H - 4, "text-anchor": "middle" }, svg); tt.textContent = "JanFebMarAprMayJunJulAugSepOctNovDec".substr((+k.slice(5, 7) - 1) * 3, 3); }
+  });
+  mo.appendChild(tip);
+  table(mo, ["Month", "Trades", "W", "L", "Net R", "Index ₹"], keys.slice().reverse().map(function (k) { var b = bm[k]; return [k, b.trades, b.wins, b.losses, b.net_r, rs(b.hypothetical_inr)]; }));
+  // equity curve in R
+  var cv = m.equity_curve_r || [];
+  if (cv.length > 1) {
+    mo.appendChild(el("div", "label", "Cumulative R (index model), trade by trade"));
+    var es = sv("svg", { viewBox: "0 0 320 100", "class": "spark", preserveAspectRatio: "none" }, mo);
+    var lo = 0, hi = 0; cv.forEach(function (p) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); });
+    var sp = (hi - lo) || 1, d = "";
+    cv.forEach(function (p, i) { d += (i ? "L" : "M") + (i * 320 / (cv.length - 1)).toFixed(1) + " " + (96 - (p[1] - lo) / sp * 92).toFixed(1); });
+    sv("line", { x1: 0, x2: 320, y1: 96 - (0 - lo) / sp * 92, y2: 96 - (0 - lo) / sp * 92, "class": "grid" }, es);
+    sv("path", { d: d }, es);
+  }
+  var dl = io.daily_limits || {}, rf = io.risk_fit || {};
+  mo.appendChild(el("div", "small muted", "Daily limits: " + (dl.blocked_by_daily_limits === 0 ? "would have blocked 0 trades. " : "see audit. ") + (dl.why || "")));
+  if (rf.max_premium_for_one_lot) mo.appendChild(el("div", "small warn", "₹500 risk per trade: one lot (" + rf.lot_size + " units, 20% premium stop, charges, slippage) fits only when the option premium is at most ₹" + num(rf.max_premium_for_one_lot) + ". " + rf.note));
+  else if (rf.error) mo.appendChild(el("div", "small muted", "₹500 risk check: " + rf.error));
+}
+function renderOptionAudit(j) {
+  var oa = j.option_audit || {}, s = clear($("opt-audit-sum")), l = clear($("opt-audit"));
+  if (!oa.rows) { empty(s, "not in this study file"); return; }
+  s.textContent = "Contracts checked: " + oa.requested + " · with 1-minute LTP candles: " + oa.contracts_with_1m_ltp + " · with historical bid/ask: " + oa.contracts_with_historical_bid_ask + ". " + (oa.note || "");
+  oa.rows.slice(0, 300).forEach(function (r) {
+    item(l, r.day + " · " + r.symbol, pill(r.candles_1m ? "LTP ONLY" : "NO DATA", r.candles_1m ? "warn" : "bad"), [r.expiry_kind + " expiry " + r.expiry + " · " + r.fyers]);
+  });
+}
+function renderGaps(j) {
+  var g = clear($("study-gaps")), c = j.coverage || {}, ix = c.index || {}, rq = j.requested || {};
+  item(g, "NIFTY 1-minute index/future bars", pill("NOT SERVED", "bad"), [rq.from + " → " + (ix.first || "—") + " (before " + (ix.first || "—") + "): FYERS refused every request (HTTP 422); no signal study there"]);
+  item(g, "NIFTY 5-minute bars, same period", pill("NOT SERVED", "bad"), ["FYERS refused these too, so ORB could not be run on 5-minute bars either"]);
+  item(g, "Option premiums for all " + ((j.option_audit || {}).requested || "") + " ORB signals", pill("NOT AVAILABLE", "bad"), ["Expired contracts are refused by FYERS; a live contract has LTP candles only, never bid/ask"]);
+  item(g, "Executable option bid/ask", pill("FROM 3 NOV 2026", "warn"), ["The weekday recorder starts storing real ATM/ITM bid/ask every minute from 3 Nov 2026; nothing earlier exists"]);
+}
+function renderSweepAudit(j) {
+  var sw = j.Sweep || {}, r = clear($("sweep-rules")), d = clear($("sweep-days"));
+  if (!sw.rule_audit) { empty(r, "not in this study file"); return; }
+  r.appendChild(el("div", "small muted", "Each evaluated day counted at its furthest-reaching check (the minute that passed the most rules). Rules are applied in this order; a day stops at its first failed rule."));
+  table(r, ["Rule", "Days reached", "Passed", "Failed"], sw.rule_audit.filter(function (x) { return x.days_reached; }).map(function (x) { return [x.rule, x.days_reached, x.passed, x.failed]; }));
+  (sw.day_audit || []).slice().reverse().slice(0, 260).forEach(function (x) {
+    item(d, x.day + (x.evaluated_at ? " " + hhmm(x.evaluated_at).slice(0, 5) : ""), pill((x.skip_reason || "").split(":")[0] || "—", "warn"), [x.skip_reason]);
+  });
 }
 function monthBars(j) {
   var svg = $("study-months"), months = {}, keys;
