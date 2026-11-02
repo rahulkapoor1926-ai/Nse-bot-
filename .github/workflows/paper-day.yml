@@ -46,6 +46,9 @@ jobs:
       # P&L notifications to your phone (optional; without them messages only go to the log)
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      # dashboard controls (pause / emergency halt of NEW entries), read each cycle from the bot-control branch
+      BOT_CONTROL_REPO: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
 

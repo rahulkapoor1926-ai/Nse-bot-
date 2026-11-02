@@ -257,7 +257,10 @@ def cmd_paper(a):
     digest = {s["name"]: _load_ds(d).digest for s, d in zip(strats, datasets)} or None
     broker = PaperBroker(cfg["state_dir"], cm, cfg["slippage_ticks"])
     broker.ledger.verify()
+    from . import control
+    controls = control.Poller.from_env()      # dashboard pause / emergency halt (entries only)
     print(report.BANNER)
+    print("dashboard controls: %s" % ("on" if controls else "not configured"))
     first = True
     while True:
         now = clock.now_ist()
@@ -269,6 +272,10 @@ def cmd_paper(a):
             print("P&L notifications: %s" % nt.channel)
             first = False
         book = risk.open_for(cfg, now.date())
+        if controls is not None:
+            used = controls.apply(book, now)
+            if used.get("entries_paused") or used.get("halt_day") == now.date().isoformat() or not used.get("read_ok"):
+                LOG.info("dashboard controls: %s", json.dumps(used, default=str))
         al = Alerts(cfg["state_dir"], now.date())
         ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest, nt)
         err = None

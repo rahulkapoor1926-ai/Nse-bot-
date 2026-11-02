@@ -65,6 +65,7 @@ class RiskBook(object):
         self.doc = doc
         self.corrupt = corrupt
         self.owner = owner
+        self.paused = None                     # set by control.py: new entries paused (reason), in memory only
         self._depth = 0
         self._fd = None
 
@@ -319,6 +320,8 @@ class RiskBook(object):
             r.append("configuration is not paper mode")
         if self.doc["lockout"]["locked"]:
             r.append("LOCKED for today: %s" % self.doc["lockout"]["reason"])
+        if self.paused:
+            r.append(self.paused)
         try:
             if not cal.is_trading_day(now.date()):
                 r.append("not an NSE trading day")

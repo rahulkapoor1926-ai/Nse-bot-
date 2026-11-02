@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>NIFTY paper bot</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="dot" id="hb-dot"></span>
+    <div>
+      <div class="title">NIFTY Algo · Paper</div>
+      <div class="sub" id="hb-text">connecting…</div>
+    </div>
+  </div>
+  <div class="mode">
+    <select id="mode" aria-label="Book">
+      <option value="standard">Standard</option>
+      <option value="forward">Forward</option>
+    </select>
+  </div>
+</header>
+<div class="banner">SIMULATED paper trading · real orders disabled · not evidence of future profit</div>
+
+<main>
+  <section id="tab-market" class="tab active">
+    <div class="card spot">
+      <div class="row between">
+        <div><div class="label">NIFTY 50 spot</div><div class="big" id="spot">—</div></div>
+        <div class="right"><span class="pill" id="spot-status">—</span><div class="muted small" id="spot-time"></div></div>
+      </div>
+      <svg id="spark" class="spark" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="muted small" id="market-note"></div>
+    </div>
+    <h2>ATM and ITM options</h2>
+    <div class="opts" id="opts"></div>
+    <h2>Today</h2>
+    <div class="grid2" id="today"></div>
+  </section>
+
+  <section id="tab-signals" class="tab">
+    <h2>ORB signals</h2><div id="orb" class="list"></div>
+    <h2>Liquidity Sweep decisions</h2><div id="sweep" class="list"></div>
+    <h2>Rejected with reasons</h2><div id="rejected" class="list"></div>
+  </section>
+
+  <section id="tab-positions" class="tab">
+    <h2>Open paper positions</h2><div id="positions" class="list"></div>
+    <h2>Trade history</h2><div id="trades" class="list"></div>
+  </section>
+
+  <section id="tab-perf" class="tab">
+    <h2>ORB vs Sweep</h2><div id="perf" class="grid2"></div>
+    <div id="sample" class="muted small"></div>
+    <h2>Daily risk (both strategies combined)</h2><div id="risk" class="list"></div>
+    <h2>Daily report</h2><div id="report" class="card mono small"></div>
+  </section>
+
+  <section id="tab-control" class="tab">
+    <h2>Health</h2><div id="health" class="list"></div>
+    <h2>Paper controls</h2>
+    <div class="card">
+      <p class="muted small">Controls only block <b>new</b> entries. Open positions keep being managed to their stop, target or time exit. Real orders stay disabled.</p>
+      <div class="ctl" id="ctl-state">—</div>
+      <label class="small muted" for="book">Book for a new run</label>
+      <select id="book"><option value="standard">Standard (validation gate)</option><option value="forward">Forward validation</option></select>
+      <button class="btn primary" id="btn-start">Start paper monitoring</button>
+      <button class="btn" id="btn-pause">Stop new entries</button>
+      <button class="btn" id="btn-resume">Resume new entries</button>
+      <button class="btn danger" id="btn-halt">Emergency halt (rest of today)</button>
+      <div id="ctl-msg" class="small"></div>
+    </div>
+    <h2>Bot log and Telegram messages</h2><div id="logs" class="list mono small"></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button data-tab="market" class="on">Market</button>
+  <button data-tab="signals">Signals</button>
+  <button data-tab="positions">Trades</button>
+  <button data-tab="perf">P&amp;L</button>
+  <button data-tab="control">Control</button>
+</nav>
+<script src="/static/app.js"></script>
+</body>
+</html>

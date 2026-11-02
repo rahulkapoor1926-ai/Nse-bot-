@@ -7,4 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - run: python3 -m pip install -q -r requirements-dashboard.txt
       - run: scripts/test_all.sh

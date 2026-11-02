@@ -1,0 +1,170 @@
+# Mobile dashboard for the PAPER bot, free: Flask runs inside this GitHub Actions job and a
+# Cloudflare quick tunnel (no account, no cost) gives it a public HTTPS address on trycloudflare.com.
+# The sign-in link (address + a random key made for this run) goes ONLY to your private Telegram chat;
+# the key is masked in this public log. Manual runs only: no schedule.
+#
+# Limits (free tier, stated honestly): a job lasts at most 6 hours, so the dashboard is up only while
+# this run is going; every run gets a NEW address and key (sent by Telegram); quick tunnels have no
+# uptime guarantee; nothing is up between runs. Real orders are impossible: the bot has no order code.
+name: dashboard
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "How long to keep the dashboard up (max 5.8)"
+        required: false
+        default: "5.5"
+      recorder:
+        description: "Record live FYERS options (spot, ATM + 2 ITM CE/PE) for the Market tab"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write       # publish dashboard controls to the bot-control branch
+  actions: write        # "Start paper monitoring" dispatches paper-day
+
+concurrency:
+  group: fyers-record   # shares the recorder's FYERS call budget: never two recorders at once
+  cancel-in-progress: false
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      TZ: Asia/Kolkata
+      FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Flask (pinned)
+        run: python3 -m pip install -q -r requirements-dashboard.txt
+
+      - name: Tests (bot + dashboard)
+        run: scripts/test_all.sh > /tmp/tests.log 2>&1 || { tail -n 60 /tmp/tests.log; exit 1; }; grep -E "^Ran|^OK" /tmp/tests.log
+
+      - name: Bot files (paper-state) and controls (bot-control)
+        run: |
+          cp config/paper.example.json config/paper.json
+          git config user.name "dashboard-bot"
+          git config user.email "dashboard-bot@users.noreply.github.com"
+          mkdir -p ps
+          if git fetch -q origin +refs/heads/paper-state:refs/remotes/origin/paper-state; then
+            git worktree add -q --detach ps origin/paper-state
+          fi
+          if git fetch -q origin +refs/heads/bot-control:refs/remotes/origin/bot-control; then
+            git worktree add -q ctl origin/bot-control && git -C ctl checkout -q -B bot-control
+          else
+            git worktree add -q --orphan -b bot-control ctl
+          fi
+          date -Iseconds > ps/.synced_at
+
+      - name: Restore recordings (private cache)
+        if: github.event.inputs.recorder != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            state/fyers-recordings
+            state/instruments-fyers.csv
+            state/instruments-fyers.csv.symbols.json
+          key: fyers-recordings-${{ github.run_id }}
+          restore-keys: fyers-recordings-
+
+      - name: FYERS login (token masked, kept only for this job)
+        if: github.event.inputs.recorder != 'false'
+        env:
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from nse_bot.broker import fyers
+          md = fyers.FyersReadOnly()
+          info = md.login()
+          print("::add-mask::%s" % md._token)
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write("FYERS_ACCESS_TOKEN=%s\n" % md._token)
+          print("FYERS login ok (token masked)")
+          PY
+
+      - name: Start dashboard and HTTPS tunnel
+        id: up
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          HOURS: ${{ github.event.inputs.hours }}
+          RECORDER: ${{ github.event.inputs.recorder }}
+        run: |
+          KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+          echo "::add-mask::$KEY"
+          echo "DASH_KEY=$KEY" >> "$GITHUB_ENV"
+          END=$(python3 -c "import datetime as d,os; h=min(float(os.environ.get('HOURS') or 5.5),5.8); print((d.datetime.now()+d.timedelta(hours=h)).strftime('%H:%M'))")
+          echo "END=$END" >> "$GITHUB_ENV"
+          echo "END_EPOCH=$(python3 -c "import time,os; print(int(time.time()+min(float(os.environ.get('HOURS') or 5.5),5.8)*3600))")" >> "$GITHUB_ENV"
+          mkdir -p state/fyers-recordings
+          if [ "$RECORDER" != "false" ]; then
+            REFRESH=""; [ -f state/instruments-fyers.csv ] && [ "$(date -r state/instruments-fyers.csv +%F)" = "$(date +%F)" ] || REFRESH="--refresh-master"
+            nohup python3 -m nse_bot --config config/paper.json fyers-record $REFRESH --out state/fyers-recordings \
+              --until "$END" --max-calls-per-minute 4 --max-calls-per-second 2 --max-calls-per-day 450 > recorder.log 2>&1 &
+          fi
+          DASH_KEY="$KEY" DASH_STATE_ROOT=ps DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings \
+            DASH_CONFIG=config/paper.json DASH_HOST=127.0.0.1 DASH_PORT=8080 \
+            nohup python3 -m nse_bot.web.app > flask.log 2>&1 &
+          curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/download/2024.12.2/cloudflared-linux-amd64 \
+            || curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared && ./cloudflared --version
+          nohup ./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080 > tunnel.log 2>&1 &
+          URL=""
+          for i in $(seq 1 60); do URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -n1); [ -n "$URL" ] && break; sleep 2; done
+          [ -n "$URL" ] || { echo "tunnel did not start"; tail -n 30 tunnel.log; exit 1; }
+          echo "URL=$URL" >> "$GITHUB_ENV"
+          echo "dashboard address (sign-in key not shown): $URL"
+          ok=""
+          for i in $(seq 1 45); do curl -fsS -m 10 "$URL/healthz" > /dev/null 2>&1 && { ok=1; break; }; sleep 4; done
+          [ -n "$ok" ] || { echo "public address not reachable"; tail -n 20 tunnel.log flask.log; exit 1; }
+          echo "verified over the public HTTPS address from this runner:"
+          echo "  /healthz            -> $(curl -s -o /dev/null -w '%{http_code}' "$URL/healthz")"
+          echo "  /api/overview no key -> $(curl -s -o /dev/null -w '%{http_code}' "$URL/api/overview") (must be 401)"
+          echo "  /login wrong key    -> $(curl -s -o /dev/null -w '%{http_code}' "$URL/login?k=wrong") (must be 401)"
+          echo "  /login right key    -> $(curl -s -c jar -o /dev/null -w '%{http_code}' "$URL/login?k=$KEY") (must be 303)"
+          curl -s -b jar "$URL/api/overview" | python3 -c "import json,sys; d=json.load(sys.stdin); m=d['market']; r=d['risk']; print('  /api/overview signed in -> mode', d['mode'], '| market available', m.get('available'), '| spot', m.get('spot'), '| risk entries', r.get('entries'), '| ORB bot', (d['books'].get('ORB') or {}).get('bot', {}).get('status'))"
+          python3 - <<'PY'
+          import os
+          from nse_bot import notify
+          tok, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+          url, key, end = os.environ["URL"], os.environ["DASH_KEY"], os.environ["END"]
+          if not (tok and chat):
+              print("Telegram secrets missing: the sign-in link cannot be delivered"); raise SystemExit(1)
+          text = ("NIFTY paper bot dashboard is up until about %s IST.\nOpen in Chrome: %s/login?k=%s\n"
+                  "New link every run. Paper only, real orders disabled." % (end, url, key))
+          notify.telegram_transport(tok, chat, text)
+          print("sign-in link sent to Telegram")
+          PY
+
+      - name: Keep the dashboard up (sync bot files every minute)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          echo "up until $END IST at $URL"
+          while [ "$(date +%s)" -lt "$END_EPOCH" ]; do
+            if [ -d ps/.git ] || [ -f ps/.git ]; then
+              git -C ps fetch -q origin +refs/heads/paper-state:refs/remotes/origin/paper-state && \
+                git -C ps reset -q --hard origin/paper-state && date -Iseconds > ps/.synced_at
+            fi
+            pgrep -f "nse_bot.web.app" > /dev/null || { echo "dashboard restarted"; DASH_STATE_ROOT=ps DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_CONFIG=config/paper.json nohup python3 -m nse_bot.web.app >> flask.log 2>&1 & }
+            pgrep -f "cloudflared tunnel" > /dev/null || { echo "tunnel stopped: the address no longer works; start a new run"; break; }
+            sleep 60
+          done
+          echo "--- recorder ---"; tail -n 5 recorder.log 2>/dev/null || true
+
+      - name: Save recordings (private cache)
+        if: always() && github.event.inputs.recorder != 'false'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            state/fyers-recordings
+            state/instruments-fyers.csv
+            state/instruments-fyers.csv.symbols.json
+          key: fyers-recordings-${{ github.run_id }}
