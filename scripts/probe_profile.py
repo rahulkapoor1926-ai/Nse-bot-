@@ -37,7 +37,38 @@ def main():
     c = doc.get("candles") or []
     days = sorted({dt.datetime.fromtimestamp(x[0], F.IST).date().isoformat() for x in c})
     print("1m history last 10 days: HTTP %s, %d candles, sessions %s" % (st, len(c), days))
+    evaluate(hdr, fut, now)
     return 0
+
+
+def evaluate(hdr, fut, now):
+    """Run the bot's auction context on live FYERS data (futures volume, index for the initial balance)."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    import json
+    from nse_bot import clock, volume_profile
+
+    def bars(sym, days):
+        st, doc = F.call("GET", F.DATA + "/history", hdr, params={
+            "symbol": sym, "resolution": "1", "date_format": "0",
+            "range_from": int(clock.at(now.date() - dt.timedelta(days=days), "09:15").timestamp()),
+            "range_to": int(now.timestamp()), "cont_flag": "1"})
+        return [(clock.from_epoch_ms(int(x[0]) * 1000), x[1], x[2], x[3], x[4], x[5] if len(x) > 5 else None)
+                for x in doc.get("candles") or []]
+    fb, ib = bars(fut, 14), bars(F.INDEX, 0)
+    t = clock.now_ist()
+    for setup in ("orb", "sweep"):
+        for d in (1, -1):
+            c = volume_profile.context(setup, d, fb, ib, ib[-1][4] if ib else None, t)
+            if setup == "orb" and d == 1:
+                for k in ("session", "previous_session", "previous_week"):
+                    v = c[k]
+                    print("%-17s %s POC %s VAL %s VAH %s HVN %s LVN %s (%s bars)" % (
+                        k, v.get("status"), v.get("poc"), v.get("val"), v.get("vah"), v.get("hvn"), v.get("lvn"), v.get("bars")))
+                print("value migration:  %s" % c["value_migration"])
+                print("acceptance:       %s" % json.dumps(c["acceptance"]))
+                print("initial balance:  %s" % json.dumps(c["initial_balance"]))
+                print("future %s, index %s" % (c["future_price"], c["index_price"]))
+            print("%-5s %-4s %-12s supports=%s cautions=%s" % (setup, c["direction"], c["verdict"], c["supports"], c["cautions"]))
 
 
 if __name__ == "__main__":
