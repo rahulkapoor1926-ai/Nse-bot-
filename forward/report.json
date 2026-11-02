@@ -5,7 +5,7 @@
   ],
   "capital_inr": 20000,
   "evidence_rule": "per strategy: < 30 completed trades INSUFFICIENT EVIDENCE, 30-99 INITIAL EVIDENCE, 100+ STRONGER EVIDENCE; never a PASS",
-  "generated": "2026-11-02T20:22:49.005450+05:30",
+  "generated": "2026-11-02T23:11:43.690172+05:30",
   "note": "paper trades on live FYERS prices only; no synthetic or artificial trades",
   "regime_basis": "from daily bars of sessions before the trade day only: trend = 10-session efficiency ratio >= 0.40; high volatility = previous session's range in the top 20% of the 20 sessions before it",
   "signals": {},
