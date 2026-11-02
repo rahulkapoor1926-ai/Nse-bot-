@@ -138,6 +138,16 @@ jobs:
           echo "  /login right key    -> $(curl -s -c jar -o /dev/null -w '%{http_code}' "$URL/login?k=$KEY") (must be 303)"
           curl -s -b jar "$URL/api/overview" | python3 -c "import json,sys; d=json.load(sys.stdin); m=d['market']; r=d['risk']; print('  /api/overview signed in -> mode', d['mode'], '| market available', m.get('available'), '| spot', m.get('spot'), '| risk entries', r.get('entries'), '| ORB bot', (d['books'].get('ORB') or {}).get('bot', {}).get('status'))"
           curl -s -b jar "$URL/api/study" | python3 -c "import json,sys; d=json.load(sys.stdin); c=d.get('coverage') or {}; i=c.get('index') or {}; print('  /api/study signed in -> available', d.get('available'), '| generated', d.get('generated'), '| index 1m', i.get('first'), 'to', i.get('last'), i.get('sessions'), 'sessions | ORB signals', ((d.get('ORB') or {}).get('summary') or {}).get('signals'), '| Sweep signals', ((d.get('Sweep') or {}).get('summary') or {}).get('signals'), '| option P&L', (d.get('options_pnl') or {}).get('status'))"
+          CHECKS=""
+          for p in / /static/app.js /api/session /api/overview /api/market /api/signals /api/trades /api/performance /api/logs /api/reports /api/study; do
+            c=$(curl -s -b jar -o /dev/null -w '%{http_code}' "$URL$p"); CHECKS="$CHECKS $p=$c"
+          done
+          echo "  signed-in pages over the public address:$CHECKS"
+          # Visible on the run page while the job is still running (job logs are only readable afterwards).
+          # The address alone gives no access: every page needs the sign-in key, sent only to Telegram.
+          echo "::notice title=Dashboard address (sign-in key only in Telegram)::$URL up until $END IST"
+          echo "::notice title=Dashboard checks over the public address::healthz=$(curl -s -o /dev/null -w '%{http_code}' "$URL/healthz") no-key=$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/overview") wrong-key=$(curl -s -o /dev/null -w '%{http_code}' "$URL/login?k=wrong")$CHECKS"
+          echo "::notice title=Backtest tab data::$(curl -s -b jar "$URL/api/study" | python3 -c "import json,sys; d=json.load(sys.stdin); i=(d.get('coverage') or {}).get('index') or {}; print('available', d.get('available'), 'generated', d.get('generated'), 'index 1m', i.get('first'), 'to', i.get('last'), i.get('sessions'), 'sessions; ORB signals', ((d.get('ORB') or {}).get('summary') or {}).get('signals'), 'Sweep signals', ((d.get('Sweep') or {}).get('summary') or {}).get('signals'), 'option P&L', (d.get('options_pnl') or {}).get('status'))")"
           export URL END DASH_KEY="$KEY"      # GITHUB_ENV values only reach LATER steps
           python3 - <<'PY'
           import os
