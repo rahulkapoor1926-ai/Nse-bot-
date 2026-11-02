@@ -177,7 +177,7 @@ def build(state_dir, cfg, now):
 
     risk_today = None
     days = []
-    for path in sorted(glob.glob(os.path.join(state_dir, "risk", "*.json"))):
+    for path in sorted(glob.glob(os.path.join(cfg.get("risk_state_dir") or state_dir, "risk", "*.json"))):
         try:
             d = state.read_json(path)
             days.append({"date": d["date"], "realized_pnl": d["realized_pnl"], "trades": d["trades"],

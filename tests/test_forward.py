@@ -43,14 +43,14 @@ class Gate(unittest.TestCase):
 
     def test_forward_needs_its_own_state_dir(self):
         with self.assertRaises(ConfigError):
-            config.validate(synth.cfg(self.dir, forward_validation=True))
-        ok = synth.cfg(os.path.join(self.dir, "forward", "orb"), forward_validation=True)
+            config.validate(synth.cfg(self.dir, forward_validation=True, instruments_enabled=["index_options"]))
+        ok = synth.cfg(os.path.join(self.dir, "forward", "orb"), forward_validation=True, instruments_enabled=["index_options"])
         self.assertIs(config.validate(ok), ok)
 
     def test_other_limits_still_apply(self):
         ex = json.load(open(os.path.join(os.path.dirname(__file__), "..", "config", "paper.example.json")))
         self.assertEqual((ex["capital_inr"], ex["max_daily_loss_inr"], ex["daily_profit_stop_inr"],
-                          ex["min_reward_risk"], ex["forward_validation"]), (20000, 500, 2000, 2.0, False))
+                          ex["min_reward_risk"], ex["forward_validation"]), (20000, 1000, 2000, 2.0, False))
 
 
 class OrbForward(unittest.TestCase):

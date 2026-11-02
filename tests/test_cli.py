@@ -22,7 +22,7 @@ class Cli(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.cfgpath = os.path.join(self.dir, "paper.json")
         with open(self.cfgpath, "w") as f:
-            json.dump(synth.cfg(os.path.join(self.dir, "state")), f)
+            json.dump(synth.cfg(os.path.join(self.dir, "state"), instruments_enabled=["index_options"]), f)
 
     def tearDown(self):
         shutil.rmtree(self.dir)
@@ -30,7 +30,7 @@ class Cli(unittest.TestCase):
     def test_validate_ok_and_refused(self):
         self.assertEqual(run(["--config", self.cfgpath, "validate-config"])[0], 0)
         bad = os.path.join(self.dir, "bad.json")
-        c = synth.cfg(self.dir)
+        c = synth.cfg(self.dir, instruments_enabled=["index_options"])
         del c["max_daily_loss_inr"]
         json.dump(c, open(bad, "w"))
         rc, _, err = run(["--config", bad, "validate-config"])
@@ -73,11 +73,6 @@ class Cli(unittest.TestCase):
                                     "option_type,expiry_date,strike_price,lot_size,tick_size,freeze_quantity\n")
             sp = os.path.join(self.dir, "s.json")
             json.dump(synth.STRATEGY, open(sp, "w"))
-            rc, _, err = run(["--config", self.cfgpath, "paper", "--master", master, "--strategy", sp, "--once"])
-            self.assertEqual(rc, 2)
-            self.assertIn("universe symbols not found", err)        # unknown stocks refused before anything
-            json.dump(synth.cfg(os.path.join(self.dir, "state"), instruments_enabled=["index_options"]),
-                      open(self.cfgpath, "w"))
             rc, _, err = run(["--config", self.cfgpath, "paper", "--master", master, "--strategy", sp, "--once"])
             self.assertEqual(rc, 2)
             self.assertIn("SAHI_KEY_ID", err)

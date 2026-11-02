@@ -85,7 +85,7 @@ class RiskCheck(unittest.TestCase):
     def test_limits_unchanged(self):
         ex = json.load(open(os.path.join(ROOT, "config", "paper.example.json")))
         self.assertEqual((ex["capital_inr"], ex["daily_profit_stop_inr"], ex["max_daily_loss_inr"]),
-                         (20000, 2000, 500))
+                         (20000, 2000, 1000))
         self.assertEqual(ex["min_reward_risk"], 2.0)
 
 

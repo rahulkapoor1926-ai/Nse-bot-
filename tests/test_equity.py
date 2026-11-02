@@ -267,22 +267,13 @@ class PaperCycle(unittest.TestCase):
                           strategies)
         return bot.run_once(ctx, now)
 
-    def test_buys_shares_and_skips_disabled_options(self):
+    def test_equity_entries_are_disabled(self):
+        """2 Nov 2026: NIFTY options only. Even with equity switched on in a config, the risk book blocks it."""
         self.md.q[12027] = quote(bid=1003.0, ask=1003.1, at=t(9, 41), iid=12027, qty=2000, oi=None, volume=2_000_000)
-        r = self.run_at(t(9, 41), [synth.EQ_STRATEGY, synth.STRATEGY])
-        fills = [x for x in self.broker.ledger.records() if x["event"] == "fill"]
-        self.assertEqual(len(fills), 1)
-        self.assertEqual((fills[0]["instrument_id"], fills[0]["segment"]), (12027, "equity_intraday"))
-        self.assertGreater(fills[0]["qty"], 1)
-        self.assertEqual(fills[0]["price"], 1003.3)              # ask + 2 ticks of 0.10
-        # exit on the target later in the day
-        plan_target = fills[0]["meta"]["plan"]["target"]
-        self.md.q[12027] = quote(bid=plan_target + 1, ask=plan_target + 1.1, at=t(10, 30), iid=12027,
-                                 qty=2000, oi=None, volume=2_000_000)
-        self.run_at(t(10, 30), [synth.EQ_STRATEGY])
-        pos = self.broker.ledger.positions()["12027"]
-        self.assertEqual(pos["qty"], 0)
-        self.assertGreater(pos["realized"], 0)
+        r = self.run_at(t(9, 41), [synth.EQ_STRATEGY])
+        self.assertEqual(self.broker.ledger.records(), [])
+        self.assertIn("only NIFTY options are enabled: equity and ETF entries are disabled",
+                      r["candidates"][0]["risk"]["reasons"])
 
     def test_unapproved_stock_strategy_blocks(self):
         other = dict(synth.EQ_STRATEGY, name="not-validated")

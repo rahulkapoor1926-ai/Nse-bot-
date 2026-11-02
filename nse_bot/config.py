@@ -96,6 +96,9 @@ SCHEMA = {
     "max_risk_per_trade_inr": _num(lo=1),
     "max_trades_per_day": _num(lo=1, hi=50, integer=True),
     "max_open_positions": _num(lo=1, hi=5, integer=True),
+    # combined across ORB and Sweep (one shared RiskBook, risk.py): stop-loss exits and open lots a day
+    "max_stop_exits_per_day": _num(lo=1, hi=20, integer=True),
+    "max_open_lots": _num(lo=1, integer=True),
     "max_lots_per_trade": _num(lo=1, integer=True),
     "max_premium_outlay_pct": _num(lo=1, hi=100),
     "min_reward_risk": _num(lo=2.0),     # 1:2 minimum, measured net of all costs (rr.py)
@@ -115,6 +118,8 @@ SCHEMA = {
     # approval needs this many out-of-sample trades (100 = STRONGER EVIDENCE); 30 is the floor for any evaluation
     "gate_min_oos_trades": _num(lo=100, integer=True),
     "state_dir": _str,
+    # the ONE risk book both strategies' processes share (same value in both configs)
+    "risk_state_dir": _str,
     "holidays_file": _str,
     "costs_file": _str,
     "events_file": _str,
@@ -161,6 +166,11 @@ def _cross_checks(c):
     out = []
     if c["max_risk_per_trade_inr"] > c["max_daily_loss_inr"]:
         out.append("max_risk_per_trade_inr exceeds max_daily_loss_inr")
+    if set(c["instruments_enabled"]) != {"index_options"}:
+        out.append("instruments_enabled must be [\"index_options\"]: equity and ETF strategies are disabled "
+                   "(NIFTY options only)")
+    if c["max_lots_per_trade"] > c["max_open_lots"]:
+        out.append("max_lots_per_trade exceeds max_open_lots")
     if c["max_daily_loss_inr"] >= c["capital_inr"]:
         out.append("max_daily_loss_inr must be below capital_inr")
     if not c["no_entries_before"] < c["no_entries_after"] < c["flat_by"]:

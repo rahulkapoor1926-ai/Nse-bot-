@@ -58,7 +58,22 @@ python3 -m nse_bot --config config/paper.json sahi-check
 The client asks SAHI for a token scoped to `marketdata.read` and refuses a
 token with any other scope, so it cannot place orders even by mistake.
 
+## One shared risk book (ORB + Liquidity Sweep)
+
+Since 2 Nov 2026 the ORB and Sweep processes keep separate ledgers but share ONE
+risk book (`risk_state_dir`, default `state/shared-risk`), so the limits are combined:
+5 filled entries a day, 2 stop-loss exits a day, Rs 500 planned net risk per trade,
+Rs 1,000 daily net loss, Rs 2,000 realised profit stop (new entries blocked, open
+positions still managed) and 1 NIFTY option lot open. Every update holds an OS file
+lock and is written atomically; an entry holds the lock from the risk check to the
+recorded fill. A corrupt or unreadable risk file locks the day (fail closed).
+See `nse_bot/risk.py` and `tests/test_shared_risk.py`.
+
 ## Stocks, ETFs and options
+
+**Equity and ETF trading is disabled: NIFTY options only.** The config must say
+`"instruments_enabled": ["index_options"]` and the risk book refuses any equity or
+ETF entry. The stock code below is kept for research and backtests only.
 
 `instruments_enabled` in the config chooses equity, etf and/or index_options.
 Stocks and ETFs come from `config/universe.example.json` (copy and edit it);

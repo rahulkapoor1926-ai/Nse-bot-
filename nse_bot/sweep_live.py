@@ -128,7 +128,7 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     plan["net"] = contract_select.net_rr(chosen, sizing.get("quantity") or c.lot_size, ctx.cfg, ctx.costs, now.date())
     gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy), ctx.cfg, ctx.costs)
     order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
-             "signal_known_at": known.isoformat(), "side": "BUY"}
+             "signal_known_at": known.isoformat(), "side": "BUY", "kind": "index_options"}
     qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(ctx, u, q, signal["trigger_close"], now)
     of, ofp = orderflow.for_entry(ctx, "sweep", u, c.option_type, now)
     ex["orderflow"] = of
@@ -137,24 +137,26 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     ex["auction_context"] = volume_profile.for_entry(ctx, "sweep", u, c.option_type, now, signal["trigger_close"])
     # options-desk context (OI, PCR, IV, Greeks, GEX estimate): recorded, never a filter
     ex["options_desk"] = options_desk.for_entry(ctx, "sweep", u, c.option_type, c.expiry, now)
-    verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
-    ex.update({"gate": gstatus, "sizing": {k: v for k, v in sizing.items() if k != "warning"},
-               "risk": verdict["verdict"], "risk_reasons": verdict["reasons"], "plan": plan})
-    cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
-    if verdict["verdict"] != "PASS":
-        rep["decision"] = "BLOCKED"
-        return [cand]
-    res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
-        "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
-        "invalidate_below": signal["invalidate_below"], "invalidate_above": signal["invalidate_above"],
-        "decision_report": rep["evaluated_at"], "data_source": ctx.cfg.get("data_source"),
-        "regime": ex.get("regime")})
-    ex["fill"] = {k: v for k, v in res.items() if k != "charges"}
-    if res["status"] == "FAILED":
-        ctx.alerts.emit("system_error", "entryfail-" + key, "paper entry failed: %s" % res["reason"], now)
-        rep["decision"] = "BLOCKED"
-        return [cand]
-    ctx.risk.record_entry(order, now)
+    # one shared risk book: the lock is held from the check to the recorded fill
+    with ctx.risk.entry_lock():
+        verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
+        ex.update({"gate": gstatus, "sizing": {k: v for k, v in sizing.items() if k != "warning"},
+                   "risk": verdict["verdict"], "risk_reasons": verdict["reasons"], "plan": plan})
+        cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
+        if verdict["verdict"] != "PASS":
+            rep["decision"] = "BLOCKED"
+            return [cand]
+        res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
+            "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
+            "invalidate_below": signal["invalidate_below"], "invalidate_above": signal["invalidate_above"],
+            "decision_report": rep["evaluated_at"], "data_source": ctx.cfg.get("data_source"),
+            "regime": ex.get("regime")})
+        ex["fill"] = {k: v for k, v in res.items() if k != "charges"}
+        if res["status"] == "FAILED":
+            ctx.alerts.emit("system_error", "entryfail-" + key, "paper entry failed: %s" % res["reason"], now)
+            rep["decision"] = "BLOCKED"
+            return [cand]
+        ctx.risk.record_entry(order, now, sizing["lots"])
     rep["decision"] = "TAKE"
     ctx.alerts.emit("price", "filled-" + key, "PAPER bought %d %s @ %.2f; stop %.2f target %.2f (estimates)" % (
         res["filled_qty"], c.symbol, res["price"], plan["stop"], plan["target"]), now)

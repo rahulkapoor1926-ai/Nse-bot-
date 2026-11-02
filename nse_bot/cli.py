@@ -138,7 +138,7 @@ def cmd_gate(a):
 
 def cmd_risk_status(a):
     cfg = config.load(a.config)
-    book = risk.RiskBook.open(cfg["state_dir"], _now(a).date())
+    book = risk.open_for(cfg, _now(a).date())
     print(json.dumps(dict(book.doc, remaining_loss_inr=book.remaining_loss(cfg), warning=risk.WARNING), indent=2))
 
 
@@ -268,7 +268,7 @@ def cmd_paper(a):
         if first:
             print("P&L notifications: %s" % nt.channel)
             first = False
-        book = risk.RiskBook.open(cfg["state_dir"], now.date())
+        book = risk.open_for(cfg, now.date())
         al = Alerts(cfg["state_dir"], now.date())
         ctx = bot.Context(cfg, cal, m, md, cm, broker, book, al, strats, evs, digest, nt)
         err = None
