@@ -225,7 +225,8 @@ class View(object):
             x = doc.get(fam) or {}
             out[fam] = {"summary": x.get("summary"), "signals": x.get("signals") or [],
                         "not_evaluable": x.get("not_evaluable"), "skipped": x.get("skipped"),
-                        "funnel_last_failed_rule": x.get("funnel_last_failed_rule")}
+                        "funnel_last_failed_rule": x.get("funnel_last_failed_rule"),
+                        "furthest_rule_failed": x.get("furthest_rule_failed")}
         return out
 
     def study_chart(self, day):

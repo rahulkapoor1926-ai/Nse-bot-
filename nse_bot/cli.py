@@ -538,7 +538,8 @@ def cmd_signal_study(a):
     for fam in ("ORB", "Sweep"):
         x = doc[fam]
         brief[fam] = {"summary": x.get("summary"), "not_evaluable": x.get("not_evaluable"),
-                      "funnel_last_failed_rule": x.get("funnel_last_failed_rule"), "skipped": x.get("skipped")}
+                      "funnel_last_failed_rule": x.get("funnel_last_failed_rule"),
+                      "furthest_rule_failed": x.get("furthest_rule_failed"), "skipped": x.get("skipped")}
     print(json.dumps(brief, indent=2, default=str))
     return 0
 

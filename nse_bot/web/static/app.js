@@ -288,7 +288,8 @@ function renderStudy(j) {
   var cal = j.calendar_added || {}, calTxt = Object.keys(cal).map(function (y) { return y + ": " + Object.keys(cal[y].holidays || {}).length + " non-trading weekdays, " + cal[y].source; }).join("\n");
   cov.textContent = "Source: " + d(j.source) +
     "\nORB days skipped: " + JSON.stringify((j.ORB || {}).skipped || {}) +
-    "\nSweep last failed rule per day: " + JSON.stringify((j.Sweep || {}).funnel_last_failed_rule || {}) +
+    "\nSweep furthest rule failed per day (rules in order): " + JSON.stringify((j.Sweep || {}).furthest_rule_failed || {}) +
+    "\nSweep rule failing at the day's last check: " + JSON.stringify((j.Sweep || {}).funnel_last_failed_rule || {}) +
     "\nSweep days not evaluable: " + JSON.stringify((j.Sweep || {}).not_evaluable || {}) +
     "\nCalendar from observed sessions (years without an NSE circular in the bot):\n" + (calTxt || "none");
   monthBars(j);

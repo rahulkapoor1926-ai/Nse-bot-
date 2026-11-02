@@ -140,6 +140,8 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
     u_starts, f_starts = [b[0] for b in u1], [b[0] for b in f1]
     days = list(_sessions(u1))
     out, funnel, not_eval = [], collections.Counter(), collections.Counter()
+    furthest = collections.Counter()           # per day: the furthest rule any minute of the day failed at
+    order = {r: i for i, r in enumerate(sweep.RULES)}
     for di, day in enumerate(days):
         if not cal.is_trading_day(day) or di < 6:
             not_eval["warm-up or non-trading day"] += 1
@@ -155,6 +157,7 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
         last = clock.at(day, cfg["no_entries_after"])
         final = None
         found = None
+        best = None
         while t <= last:
             now = t
             t += dt.timedelta(minutes=1)
@@ -165,6 +168,9 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
             rep = sweep.evaluate(strategy, "NIFTY", now, u_eval, u1h, u1d, ff, None, None, cfg)
             final = rep
             why = rep.get("skip_reason") or ""
+            st_ = why.split(":")[0]
+            if st_ in order and (best is None or order[st_] > order[best]):
+                best = st_
             if why.startswith("data_future") or why.startswith("data_underlying"):
                 continue
             if why.startswith("contract: no option chain source"):
@@ -177,6 +183,7 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
                 not_eval[why[:80]] += 1
             else:
                 funnel[stage] += 1
+                furthest[best or stage] += 1
             continue
         plan = found.get("underlying_plan") or {}
         spot = plan.get("spot") or (found.get("liquidity") or {}).get("reclaim_close")
@@ -188,7 +195,9 @@ def sweep_reversal(u1, f1, strategy, cfg, cal):
                     "liquidity": found.get("liquidity"), "zone": found.get("zone"),
                     "structure": found.get("structure"), "underlying_plan": plan, **reg})
         funnel["SIGNAL"] += 1
+        furthest["SIGNAL"] += 1
     return {"signals": out, "sessions": len(days), "funnel_last_failed_rule": dict(funnel),
+            "furthest_rule_failed": {k: furthest[k] for k in list(sweep.RULES) + ["SIGNAL"] if furthest[k]},
             "not_evaluable": dict(not_eval)}
 
 

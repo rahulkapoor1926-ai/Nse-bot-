@@ -145,6 +145,7 @@ class Sweep(unittest.TestCase):
         self.assertEqual(r["signals"], [])
         self.assertEqual(r["not_evaluable"].get("data_future: future bars without volume"), 1)
         self.assertEqual(r["funnel_last_failed_rule"], {"sweep": 1})
+        self.assertEqual(r["furthest_rule_failed"], {"sweep": 1})
 
 
 if __name__ == "__main__":
