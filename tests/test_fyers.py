@@ -313,10 +313,6 @@ class Rules(unittest.TestCase):
         self.assertFalse(c["live_orders_enabled"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class BotWithSpotCheck(unittest.TestCase):
     """The ORB entry path on a feed that requires spot verification (as FYERS does)."""
 
@@ -426,3 +422,18 @@ class ReceiptTime(unittest.TestCase):
         q = quote(at=NOW + dt.timedelta(seconds=30))
         q.extra = {"received_at": NOW.isoformat()}
         self.assertTrue(any("future" in p for p in Q.check(q, NOW, self.cfg, 65)))
+
+
+class AuthCodeFrom(unittest.TestCase):
+    def test_bare_code_url_and_quotes(self):
+        from nse_bot.broker.fyers import auth_code_from
+        self.assertEqual(auth_code_from("  abc.def.ghi \n"), "abc.def.ghi")
+        self.assertEqual(auth_code_from('"abc.def.ghi"'), "abc.def.ghi")
+        self.assertEqual(auth_code_from("https://x.example/cb?s=ok&code=200&auth_code=abc.def.ghi&state=None"),
+                         "abc.def.ghi")
+        self.assertEqual(auth_code_from("auth_code=abc.def.ghi"), "abc.def.ghi")
+        self.assertEqual(auth_code_from(None), "")
+
+
+if __name__ == "__main__":
+    unittest.main()

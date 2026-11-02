@@ -73,6 +73,12 @@ jobs:
         if: (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         run: python3 -m unittest discover -s tests -p "test_fyers_recorder.py"
 
+      - name: FYERS auth code shape (never prints the code)
+        if: (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
+        env:
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/fyers_code_shape.py
+
       - name: FYERS login (token masked, kept only for this job)
         if: (steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch')
         env:

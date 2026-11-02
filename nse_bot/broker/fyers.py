@@ -86,6 +86,16 @@ def _int(v):
         return None
 
 
+def auth_code_from(value):
+    """The auth code from the secret: accepts the bare code, or the whole redirect URL / query string
+    FYERS shows after login (takes its auth_code parameter). Never logged."""
+    v = (value or "").strip().strip('"').strip("'").strip()
+    if "auth_code=" in v:
+        v = v.split("auth_code=", 1)[1].split("&", 1)[0].split("#", 1)[0]
+        v = urllib.parse.unquote(v).strip()
+    return v
+
+
 class FyersReadOnly(MarketData):
     source = "fyers"
     verifies_spot = True
@@ -94,7 +104,7 @@ class FyersReadOnly(MarketData):
                  monotonic=time.monotonic, per_day=2400, per_second=PER_SECOND, now=clock.now_ist):
         self._app = (env.get(ENV_APP) or "").strip()
         self._secret = (env.get(ENV_SECRET) or "").strip()
-        self._code = (env.get(ENV_CODE) or "").strip()
+        self._code = auth_code_from(env.get(ENV_CODE))
         self._token = (env.get(ENV_TOKEN) or "").strip() or None
         if not self._app:
             raise ConfigError("%s is not set (add it as a GitHub Actions repository secret)" % ENV_APP)

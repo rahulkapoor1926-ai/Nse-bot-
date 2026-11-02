@@ -38,6 +38,11 @@ jobs:
       - name: Signal study tests
         run: python3 -m unittest discover -s tests -p "test_signal_study.py"
 
+      - name: FYERS auth code shape (never prints the code)
+        env:
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/fyers_code_shape.py
+
       - name: FYERS login (token masked, kept only for this job)
         env:
           FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
