@@ -216,7 +216,11 @@ class View(object):
         if "error" in doc:
             return {"available": False, "reason": doc["error"]}
         out = {"available": True, "generated": doc.get("generated"), "source": doc.get("source"),
-               "note": doc.get("note"), "coverage": doc.get("coverage"), "chart_days": sorted(doc.get("charts") or {})}
+               "note": doc.get("note"), "coverage": doc.get("coverage"), "chart_days": sorted(doc.get("charts") or {}),
+               "requested": doc.get("requested"), "index_daily": doc.get("index_daily"),
+               "fetch_audit": doc.get("fetch_audit") or [], "calendar_added": doc.get("calendar_added") or {},
+               "options_pnl": doc.get("options_pnl") or {"status": "NOT AVAILABLE",
+                                                         "reason": "the study file has no option P&L section"}}
         for fam in ("ORB", "Sweep"):
             x = doc.get(fam) or {}
             out[fam] = {"summary": x.get("summary"), "signals": x.get("signals") or [],

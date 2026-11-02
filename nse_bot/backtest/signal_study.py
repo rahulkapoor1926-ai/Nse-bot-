@@ -27,6 +27,49 @@ from .sweep_engine import _daily
 NOT_SIMULATED = ("No option premium, fill or P&L: FYERS has no expired NIFTY options and no historical bid/ask. "
                  "The strike is the bot's target strike (nearest 50 to the trigger price), not a traded contract.")
 STRIKE_STEP = 50
+OPTIONS_PNL = {
+    "status": "NOT AVAILABLE",
+    "simulated_option_trades": 0,
+    "reason": ("Genuine historical NIFTY option prices with executable bid/ask are not available: FYERS refuses "
+               "expired option contracts (HTTP 422, 30 of 30 probed on 2 Nov 2026), live contracts only have "
+               "LTP candles since listing, and FYERS /history has no bid/ask at all. Trade count, wins, losses, "
+               "SL hits, win rate, net P&L, drawdown and profit factor therefore cannot be computed without "
+               "inventing prices, so none are shown."),
+    "what_will_fill_it": ("The weekday FYERS recorder (09:10-15:31 IST) stores real ATM/ITM bid/ask every minute "
+                          "from 3 Nov 2026; option P&L is computed only for signals on recorded days."),
+}
+
+
+def observed_calendar(file_years, daily_dates, bars_per_day, today, full_session_bars=300):
+    """Trading calendar for PAST years the holiday file lacks, from what the exchange actually did:
+    a weekday with no FYERS daily candle was a holiday; a weekday whose 1-minute data is a short special
+    session (fewer than `full_session_bars` bars, e.g. Muhurat) is treated as a non-trading day too.
+    Years in the holiday file (from NSE circulars) are kept exactly as they are. Only dates up to `today`
+    are judged; a year is added only when the daily data covers it from its first weekday."""
+    from .. import clock
+    years = dict(file_years)
+    sessions = set(daily_dates)
+    added = {}
+    for y in sorted({d.year for d in sessions}):
+        if str(y) in years:
+            continue
+        d, last = dt.date(y, 1, 1), min(dt.date(y, 12, 31), today)
+        first = min(x for x in sessions if x.year == y)
+        hol, partial = {}, False
+        while d <= last:
+            if d.weekday() < 5:
+                if d < first:
+                    partial = True
+                elif d not in sessions:
+                    hol[d.isoformat()] = "no NSE session in FYERS daily data"
+                elif d in bars_per_day and bars_per_day[d] < full_session_bars:
+                    hol[d.isoformat()] = "special/short session (%d one-minute bars): not traded" % bars_per_day[d]
+            d += dt.timedelta(days=1)
+        years[str(y)] = {"holidays": hol}
+        added[str(y)] = {"source": "observed: FYERS NIFTY 50 daily candles%s" % (
+            " (from %s; earlier weekdays assumed trading, used only for warm-up)" % first if partial else ""),
+            "holidays": hol}
+    return clock.Calendar(years), added
 
 
 def _atm(price):
@@ -44,8 +87,12 @@ def _sessions(bars):
     return out
 
 
-def orb(u1, strategy, cfg, cal):
+def orb(u1, strategy, cfg, cal, native_minutes=1):
+    """u1: sorted bars of `native_minutes` (1 = resampled to the strategy's interval; equal to the
+    interval = FYERS's own bars of that size, used as they are)."""
     minutes = strategy["interval_minutes"]
+    if native_minutes not in (1, minutes):
+        raise ValueError("ORB needs 1-minute bars or %d-minute bars, not %d-minute" % (minutes, native_minutes))
     per_day = int(strategy.get("max_signals_per_day", 1))
     days = _sessions(u1)
     history = list(days)
@@ -54,7 +101,7 @@ def orb(u1, strategy, cfg, cal):
         if not cal.is_trading_day(day):
             skipped["not a trading day"] += 1
             continue
-        bars = st.resample(days[day], minutes)
+        bars = st.resample(days[day], minutes) if native_minutes == 1 else days[day]
         if len(bars) < 6:
             skipped["incomplete session data"] += 1
             continue
@@ -75,6 +122,7 @@ def orb(u1, strategy, cfg, cal):
                 break
             a, b = patterns.entry_window(sig, strategy)
             out.append({"strategy": strategy["name"], "family": "ORB", "day": day.isoformat(),
+                        "data": "%dm" % native_minutes,
                         "signal_time": _iso(sig["known_at"]), "direction": sig["option_type"],
                         "option_type": sig["option_type"], "trigger_close": sig["trigger_close"],
                         "target_strike": _atm(sig["trigger_close"]), "entry_window": [_iso(a), _iso(b)],
@@ -158,11 +206,14 @@ def summarise(signals, sessions):
             "by_month": by_month, "by_regime": dict(reg)}
 
 
-def charts(u1, signals, minutes=5):
+def charts(u1, signals, minutes=5, native_minutes=1):
     """5-minute OHLC of each signal day (for the dashboard's charts): real index bars only."""
     days = _sessions(u1)
     out = {}
     for d in sorted({s["day"] for s in signals}):
-        bars = st.resample(days.get(dt.date.fromisoformat(d), []), minutes)
+        day_bars = days.get(dt.date.fromisoformat(d), [])
+        if not day_bars:
+            continue
+        bars = st.resample(day_bars, minutes) if native_minutes == 1 else day_bars
         out[d] = [[_iso(b[0]), b[1], b[2], b[3], b[4]] for b in bars]
     return out

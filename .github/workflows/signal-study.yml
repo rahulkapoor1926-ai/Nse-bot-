@@ -8,9 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       days:
-        description: "Calendar days of history (FYERS serves about 1 year of 1-minute bars)"
+        description: "Calendar days of 1-minute history to request (FYERS served about 1 year when probed)"
         required: false
         default: "365"
+      older_days:
+        description: "Also try FYERS 5-minute index bars back this many days (ORB only; max 2 years)"
+        required: false
+        default: "730"
 
 permissions:
   contents: read
@@ -62,10 +66,11 @@ jobs:
       - name: Run the study
         env:
           DAYS_INPUT: ${{ github.event.inputs.days }}
+          OLDER_INPUT: ${{ github.event.inputs.older_days }}
         run: |
           python3 -m nse_bot --config config/paper.json signal-study --refresh-master \
-            --out state/signal-study --days "${DAYS_INPUT:-365}" \
-            --max-calls-per-minute 20 --max-calls-per-second 2 --max-calls-per-day 60
+            --out state/signal-study --days "${DAYS_INPUT:-365}" --older-days "${OLDER_INPUT:-730}" \
+            --max-calls-per-minute 20 --max-calls-per-second 2 --max-calls-per-day 150
 
       - name: Signals found (first 40 of each)
         if: always()

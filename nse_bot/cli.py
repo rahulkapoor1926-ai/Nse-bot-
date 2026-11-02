@@ -22,6 +22,7 @@ Exit codes: 0 ok, 2 refused/invalid (config, data, gate not approved), 3 unexpec
 """
 
 import argparse
+import collections
 import datetime as dt
 import json
 import logging
@@ -437,27 +438,83 @@ def cmd_signal_study(a):
     cfg, cal, cm, m, md = _fyers_ctx(a, cfg, cal, cm)
     end = clock.now_ist()
     start = clock.at((end - dt.timedelta(days=a.days)).date(), "09:15")
+    audit = []
+
+    def fetch(iid_, size, frm, to, label):
+        """90-day requests, each logged with FYERS's answer; a refused window is reported, never filled."""
+        bars = []
+
+        def window(t0, t1):
+            try:
+                got = md.candles(iid_, size, t0, t1)
+                audit.append({"series": label, "size": size, "from": t0.date().isoformat(),
+                              "to": t1.date().isoformat(), "bars": len(got), "result": "ok"})
+                bars.extend(got)
+            except NseBotError as e:
+                if t1 - t0 > dt.timedelta(days=2):          # refused: halve, to find where FYERS's history starts
+                    mid = t0 + (t1 - t0) / 2
+                    window(t0, mid)
+                    window(mid, t1)
+                else:
+                    audit.append({"series": label, "size": size, "from": t0.date().isoformat(),
+                                  "to": t1.date().isoformat(), "bars": 0, "result": str(e)[:160]})
+        t0 = frm
+        while t0 < to:
+            t1 = min(to, t0 + dt.timedelta(days=90))
+            window(t0, t1)
+            t0 = t1
+        mins = {"1m": 1, "5m": 5}[size]
+        seen, out = set(), []
+        for b in sorted(bars, key=lambda b: b[0]):
+            if b[0] not in seen and b[0] + dt.timedelta(minutes=mins) <= end:
+                seen.add(b[0])
+                out.append(b)
+        return out
     iid = m.index_id(cfg["index_names"]["NIFTY"])
-    u1 = [b for b in md.candles(iid, "1m", start, end) if b[0] + dt.timedelta(minutes=1) <= end]
+    first_day = (end - dt.timedelta(days=max(a.days, a.older_days or 0))).date()
+    daily = md.candles(iid, "1d", clock.at(dt.date(first_day.year, 1, 1), "00:00"), end)
+    audit.append({"series": "NIFTY index", "size": "1d", "from": dt.date(first_day.year, 1, 1).isoformat(),
+                  "to": end.date().isoformat(), "bars": len(daily), "result": "ok"})
+    u1 = fetch(iid, "1m", start, end, "NIFTY index")
+    # Older than the 1-minute history: FYERS's own 5-minute bars, if it serves them (ORB runs on 5m bars).
+    u5 = []
+    first_1m = clock.at(u1[0][0].date(), "00:00") if u1 else end
+    older = clock.at((end - dt.timedelta(days=a.older_days)).date(), "09:15") if a.older_days else None
+    if older and older < first_1m:
+        u5 = fetch(iid, "5m", older, first_1m, "NIFTY index (older, 5m)")
+    per_day = collections.Counter(b[0].date() for b in u1)
+    for b in u5:                                   # a 5-minute bar stands for 5 one-minute bars
+        per_day[b[0].date()] += 5
+    with open(cfg["holidays_file"], encoding="utf-8") as fh:
+        file_years = json.load(fh)["years"]
+    cal, cal_added = SS.observed_calendar(file_years, [b[0].date() for b in daily], per_day, end.date())
     fut = m.current_future("NIFTY", end.date())
     f1, fut_note = [], None
     if fut is None:
         fut_note = "no current NIFTY future in the symbol master"
     else:
-        try:
-            f1 = [b for b in md.candles(fut.instrument_id, "1m", start, end) if b[0] + dt.timedelta(minutes=1) <= end]
-        except NseBotError as e:
-            fut_note = "future history refused: %s" % e
+        f1 = fetch(fut.instrument_id, "1m", start, end, "NIFTY future %s" % md.symbols.get(fut.instrument_id))
+        if not f1:
+            fut_note = "FYERS served no 1-minute future bars for this window"
     strategies = {name: _strategy(path) for name, path in (("orb", a.orb_strategy), ("sweep", a.sweep_strategy))}
 
     def cover(bars):
         d = sorted({b[0].date() for b in bars})
         return {"bars": len(bars), "sessions": len(d), "first": d[0].isoformat() if d else None,
                 "last": d[-1].isoformat() if d else None}
-    doc = {"generated": end.isoformat(), "source": "FYERS /history, 1-minute, read-only", "note": SS.NOT_SIMULATED,
-           "coverage": {"index": cover(u1), "future": dict(cover(f1), symbol=md.symbols.get(fut.instrument_id) if fut
-                                                            else None, note=fut_note)}}
+    doc = {"generated": end.isoformat(), "source": "FYERS /history, read-only", "note": SS.NOT_SIMULATED,
+           "requested": {"from": (older or start).date().isoformat(), "to": end.date().isoformat()},
+           "coverage": {"index": cover(u1), "index_5m_older": cover(u5),
+                        "future": dict(cover(f1), symbol=md.symbols.get(fut.instrument_id) if fut else None,
+                                       note=fut_note)},
+           "fetch_audit": audit, "options_pnl": SS.OPTIONS_PNL,
+           "calendar_added": cal_added, "index_daily": cover(daily)}
     o = SS.orb(u1, strategies["orb"], cfg, cal)
+    if u5:
+        o5 = SS.orb(u5, strategies["orb"], cfg, cal, native_minutes=5)
+        o = {"signals": o5["signals"] + o["signals"], "sessions": o5["sessions"] + o["sessions"],
+             "skipped": dict(collections.Counter(o5["skipped"]) + collections.Counter(o["skipped"])),
+             "sessions_by_data": {"5m": o5["sessions"], "1m": o["sessions"]}}
     doc["ORB"] = dict(o, summary=SS.summarise(o["signals"], o["sessions"]))
     if f1:
         s = SS.sweep_reversal(u1, f1, strategies["sweep"], cfg, cal)
@@ -465,10 +522,11 @@ def cmd_signal_study(a):
     else:
         doc["Sweep"] = {"signals": [], "summary": None, "not_evaluable": {"no index-future 1m history": cover(u1)["sessions"]}}
     doc["charts"] = SS.charts(u1, doc["ORB"]["signals"] + doc["Sweep"]["signals"])
+    doc["charts"].update(SS.charts(u5, doc["ORB"]["signals"], native_minutes=5))
     doc["api_calls"] = md.calls_made
     os.makedirs(a.out, exist_ok=True)
     state.write_json(os.path.join(a.out, "study.json"), doc)
-    brief = {k: doc[k] for k in ("coverage", "api_calls", "note")}
+    brief = {k: doc[k] for k in ("requested", "index_daily", "calendar_added", "coverage", "api_calls", "note", "options_pnl", "fetch_audit")}
     for fam in ("ORB", "Sweep"):
         x = doc[fam]
         brief[fam] = {"summary": x.get("summary"), "not_evaluable": x.get("not_evaluable"),
@@ -556,6 +614,8 @@ def build_parser():
     s.add_argument("--refresh-master", action="store_true")
     s.add_argument("--out", default="state/signal-study")
     s.add_argument("--days", type=int, default=365)
+    s.add_argument("--older-days", type=int, default=0,
+                   help="also try FYERS 5-minute index bars back this many days, before the 1-minute history (ORB only)")
     s.add_argument("--orb-strategy", default="config/strategies/orb15.example.json")
     s.add_argument("--sweep-strategy", default="config/strategies/sweep.example.json")
     s.add_argument("--max-calls-per-minute", type=int, default=20)
