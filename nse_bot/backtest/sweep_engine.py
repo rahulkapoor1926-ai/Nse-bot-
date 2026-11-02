@@ -24,7 +24,7 @@ import datetime as dt
 import hashlib
 from collections import Counter
 
-from .. import budget, clock, contract_select, structure as st, sweep
+from .. import budget, clock, contract_select, rr, structure as st, sweep
 from ..errors import CalendarError, DataError
 from .engine import split_days  # noqa: F401  (same chronological split for the gate)
 
@@ -73,6 +73,9 @@ def _simulate(ds, sel, now, plan, u_stop, bias, cfg, costs, day):
     if sizing.get("lots", 0) < 1:
         return None, "sizing gives zero lots (Rs %s risk limit)" % cfg["max_risk_per_trade_inr"]
     qty = sizing["quantity"]
+    net = rr.net(entry, sel["sizing_stop"] + shift, round(target - slip, 2), qty, costs, day, c.cost_segment)
+    if not rr.ok(net, cfg):
+        return {"skipped": rr.why(net, cfg)}, None
     if leg["ask_qty"] is None or leg["ask_qty"] < qty:
         return None, "displayed ask size below the order size"
     flat = clock.at(day, plan["flat_by"])
@@ -168,6 +171,9 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
             taken += 1
             if why:
                 invalid[why] += 1
+                continue
+            if tr.get("skipped"):
+                counts["net_rr_no_trade"] += 1                 # a valid NO TRADE: never counted as a gate example
                 continue
             counts["valid"] += 1
             if tr["unresolved"]:

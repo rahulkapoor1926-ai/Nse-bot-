@@ -13,7 +13,7 @@ per-trade cap and what is left of the daily limit.
 
 import os
 
-from . import clock, state
+from . import clock, rr, state
 from .errors import StateCorrupt
 
 WARNING = ("Limits are enforced on fills the bot knows about. Slippage, gaps and failed exits can "
@@ -163,6 +163,8 @@ class RiskBook(object):
                      % (sizing["loss_at_stop_inr"], self.remaining_loss(cfg)))
         if not exit_plan or exit_plan.get("reward_risk", 0) < cfg["min_reward_risk"]:
             r.append("reward/risk below %.2f" % cfg["min_reward_risk"])
+        if not exit_plan or not rr.ok(exit_plan.get("net"), cfg):
+            r.append(rr.why((exit_plan or {}).get("net"), cfg))
         return {"verdict": "BLOCK" if r else "PASS", "reasons": r, "warning": WARNING,
                 "day_pnl": round(self.day_pnl(), 2), "trades": self.doc["trades"],
                 "remaining_loss_inr": round(self.remaining_loss(cfg), 2)}

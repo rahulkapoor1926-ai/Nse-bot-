@@ -10,7 +10,7 @@ from nse_bot import risk
 
 DAY = dt.date(2026, 10, 29)
 SIZING = {"lots": 1, "loss_at_stop_inr": 400.0}
-PLAN = {"reward_risk": 2.0}
+PLAN = {"reward_risk": 2.0, "net": {"net_reward_risk": 2.1}}
 
 
 def order(iid=101, known="2026-10-29T09:40:00+05:30"):

@@ -15,7 +15,7 @@ failure never turns into "position closed" or "price = 0".
 
 import logging
 
-from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, quotes, scanner
+from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, quotes, rr, scanner
 from .errors import NseBotError
 
 log = logging.getLogger("nse_bot")
@@ -135,6 +135,17 @@ def manage_positions(ctx, now, ulast):
     return events
 
 
+def _net_rr(ctx, c, ask, stop, target, sizing, now):
+    """Net 1:2 check input (rr.py): fills at ask+slippage and bid-slippage, all charges."""
+    slip = ctx.cfg["slippage_ticks"] * c.tick_size
+    qty = (sizing or {}).get("quantity") or c.lot_size           # zero lots is blocked anyway; measure one lot
+    try:
+        return rr.net(round(ask + slip, 2), round(stop - slip, 2), round(target - slip, 2), qty, ctx.costs,
+                      now.date(), c.cost_segment)
+    except Exception as e:                      # noqa: BLE001  (no number means NO TRADE)
+        return {"net_reward_risk": 0.0, "reason": str(e)}
+
+
 def _last_buy(ctx, iid):
     buys = [r for r in ctx.broker.ledger.records()
             if r.get("event") == "fill" and r.get("side") == "BUY" and str(r.get("instrument_id")) == str(iid)]
@@ -177,6 +188,7 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         plan = exit_mod.plan(cand["entry_price"], c, strategy, ctx.cfg, now.date())
         sizing = budget.size(cand["entry_price"], plan["stop"], c, ctx.cfg, ctx.costs, now.date(),
                              ctx.risk.remaining_loss(ctx.cfg))
+        plan["net"] = _net_rr(ctx, c, cand["entry_price"], plan["stop"], plan["target"], sizing, now)
         order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
                  "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY"}
         qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(

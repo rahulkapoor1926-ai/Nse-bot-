@@ -24,7 +24,7 @@ def cfg(state_dir, **over):
         "underlyings": ["NIFTY"], "index_names": {"NIFTY": "Nifty 50"},
         "capital_inr": 20000, "max_daily_loss_inr": 500, "daily_profit_stop_inr": 2000,
         "max_risk_per_trade_inr": 500, "max_trades_per_day": 3, "max_open_positions": 1,
-        "max_lots_per_trade": 1, "max_premium_outlay_pct": 80, "min_reward_risk": 1.5,
+        "max_lots_per_trade": 1, "max_premium_outlay_pct": 80, "min_reward_risk": 2.0,
         "no_entries_before": "09:30", "no_entries_after": "14:30", "flat_by": "15:15",
         "expiry_day_flat_by": "14:45", "min_days_to_expiry": 0, "max_quote_age_seconds": 10,
         "max_spread_pct": 3, "min_top_qty_lots": 2, "min_volume_today": 10000,
@@ -42,7 +42,7 @@ def cfg(state_dir, **over):
 
 
 STRATEGY = {"name": "orb15", "instrument": "index_option", "pattern": "orb", "params": {"or_minutes": 15, "buffer_pct": 0.0},
-            "interval_minutes": 5, "strike_offset": 0, "stop_pct": 20, "target_r": 2,
+            "interval_minutes": 5, "strike_offset": 0, "stop_pct": 20, "target_r": 3,
             "entry_delay_bars": 1, "max_signals_per_day": 1}
 
 
@@ -121,7 +121,7 @@ def write_dataset(folder, days, synthetic=True, trend=True, seed=1, strikes=12, 
 
 EQ_STRATEGY = {"name": "orb15-eq", "instrument": "equity", "pattern": "orb",
                "params": {"or_minutes": 15, "buffer_pct": 0.0}, "interval_minutes": 5, "strike_offset": 0,
-               "stop_pct": 0.6, "target_r": 2, "entry_delay_bars": 1, "max_signals_per_day": 1}
+               "stop_pct": 0.6, "target_r": 3, "entry_delay_bars": 1, "max_signals_per_day": 1}
 
 
 def write_equity_dataset(folder, days, symbols=(("AAA", "equity"), ("BBB", "etf")), fill_model="quotes",

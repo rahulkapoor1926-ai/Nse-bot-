@@ -22,7 +22,7 @@ import datetime as dt
 import hashlib
 from collections import Counter
 
-from .. import clock, patterns
+from .. import clock, patterns, rr
 from ..errors import CalendarError, DataError
 from ..instruments import Contract
 from ..exit import plan as exit_plan
@@ -122,6 +122,9 @@ def simulate_trade(ds, u, day, sig, typ, strategy, cfg, costs, cal, ubars):
     slip = cfg["slippage_ticks"] * tick
     entry = round(eb["ask"] + slip, 2)
     p = exit_plan(entry, c, strategy, cfg, day)
+    net = rr.net(entry, round(p["stop"] - slip, 2), round(p["target"] - slip, 2), c.lot_size, costs, day, c.cost_segment)
+    if not rr.ok(net, cfg):
+        return {"skipped": rr.why(net, cfg)}, None, None
     flat = clock.at(day, p["flat_by"])
     ucloses = {b[0]: (i, b[4]) for i, b in enumerate(ubars)}
     later = sorted(t for t in bars if t > entry_bar_start)
@@ -217,6 +220,10 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
                 if why:
                     invalid[why] += 1
                     break
+                if t.get("skipped"):
+                    counts["net_rr_no_trade"] += 1             # a valid NO TRADE: never counted as a gate example
+                    start = sig["bar_index"] + 1
+                    continue
                 counts["valid"] += 1
                 if t["unresolved"]:
                     unresolved.append(t)

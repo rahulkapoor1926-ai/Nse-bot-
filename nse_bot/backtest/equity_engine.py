@@ -26,7 +26,7 @@ import hashlib
 import math
 from collections import Counter
 
-from .. import budget, clock, patterns
+from .. import budget, clock, patterns, rr
 from ..errors import CalendarError, DataError
 from ..exit import plan as exit_plan
 from ..instruments import Stock
@@ -102,6 +102,9 @@ def simulate_trade(ds, sym, day, sig, strategy, cfg, costs, recs):
     qty = size["quantity"]
     if qty < 1:
         return None, "sizing gives zero shares", None
+    net = rr.net(entry, round(p["stop"] - slip, 2), round(p["target"] - slip, 2), qty, costs, day, st.cost_segment)
+    if not rr.ok(net, cfg):
+        return {"skipped": rr.why(net, cfg)}, None, None
     if ds.fill_model == "quotes" and (eb["ask_qty"] is None or eb["ask_qty"] < qty):
         return None, "displayed ask size below the order size", None
     flat = clock.at(day, p["flat_by"])
@@ -207,6 +210,10 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
                 if why:
                     invalid[why] += 1
                     break
+                if t.get("skipped"):
+                    counts["net_rr_no_trade"] += 1             # a valid NO TRADE: never counted as a gate example
+                    start = sig["bar_index"] + 1
+                    continue
                 counts["valid"] += 1
                 if t["unresolved"]:
                     unresolved += 1

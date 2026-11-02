@@ -115,6 +115,7 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     # size on the conservative stop (IV drop, theta, gap allowance, slippage), never on the planned stop
     sizing = budget.size(chosen["entry"], chosen["sizing_stop"], c, ctx.cfg, ctx.costs, now.date(),
                          ctx.risk.remaining_loss(ctx.cfg))
+    plan["net"] = contract_select.net_rr(chosen, sizing.get("quantity") or c.lot_size, ctx.cfg, ctx.costs, now.date())
     gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy))
     order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
              "signal_known_at": known.isoformat(), "side": "BUY"}

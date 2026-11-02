@@ -59,7 +59,7 @@ def write_ds(folder, quotes=default_quote, index=lambda t: 25000.0, synthetic=Tr
     return sweep_store.load(folder)
 
 
-def selected(ds, entry=100.15, stop=92.0, sizing_stop=90.0, target=115.0):
+def selected(ds, entry=100.15, stop=92.0, sizing_stop=92.0, target=125.0):
     return {"contract": ds.by_id(1), "entry": entry, "premium_stop": stop, "sizing_stop": sizing_stop,
             "premium_target": target, "reward_risk": 2.0, "strike": 25000, "option_type": "CE"}
 
@@ -103,7 +103,7 @@ class Replay(unittest.TestCase):
 
     def test_missing_quotes_delay_the_exit_and_are_flagged(self):
         def q(t):
-            return (120.0 if t >= clock.at(DAY, "10:10") else 100.0), 100.0
+            return (130.0 if t >= clock.at(DAY, "10:10") else 100.0), 100.0
         gaps = {(clock.at(DAY, "10:%02d" % m), 1) for m in range(5, 15)}
         tr, why = self.sim(write_ds(os.path.join(self.dir, "a"), quotes=q, missing=gaps))
         self.assertTrue(tr["exit_delayed_by_missing_data"])
@@ -171,7 +171,7 @@ class NoLookAhead(unittest.TestCase):
         self.assertEqual(r["counts"].get("independent", 0), 0)
 
     def test_one_setup_becomes_one_trade_with_the_real_fill(self):
-        ds = write_ds(os.path.join(self.dir, "a"), quotes=lambda t: ((120.0 if t >= clock.at(DAY, "10:30") else 100.0), 100.0))
+        ds = write_ds(os.path.join(self.dir, "a"), quotes=lambda t: ((130.0 if t >= clock.at(DAY, "10:30") else 100.0), 100.0))
 
         def fake(strategy, u, now, *a, **k):
             if now != SIGNAL:
@@ -183,7 +183,7 @@ class NoLookAhead(unittest.TestCase):
         self.assertEqual((r["counts"]["independent"], r["counts"]["valid"], r["counts"]["executed"]), (1, 1, 1))
         [tr] = r["trades"]
         self.assertEqual(tr["reason"], "target")
-        self.assertEqual(tr["exit"], round(119.95 - 0.10, 2))
+        self.assertEqual(tr["exit"], round(129.95 - 0.10, 2))
 
 
 class Gate(unittest.TestCase):

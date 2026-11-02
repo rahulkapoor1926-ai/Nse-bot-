@@ -51,7 +51,7 @@ class Entry(unittest.TestCase):
 
 class Exit(unittest.TestCase):
     def plan(self, entry_px=100.5, c=None):
-        return exit_mod.plan(entry_px, c or contract(), synth.STRATEGY, CFG, DAY)
+        return exit_mod.plan(entry_px, c or contract(), dict(synth.STRATEGY, target_r=2), CFG, DAY)
 
     def test_plan_on_ticks(self):
         p = self.plan()

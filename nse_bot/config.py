@@ -99,7 +99,7 @@ SCHEMA = {
     "max_open_positions": _num(lo=1, hi=5, integer=True),
     "max_lots_per_trade": _num(lo=1, integer=True),
     "max_premium_outlay_pct": _num(lo=1, hi=100),
-    "min_reward_risk": _num(lo=0.1),
+    "min_reward_risk": _num(lo=2.0),     # 1:2 minimum, measured net of all costs (rr.py)
     "no_entries_before": _hhmm,
     "no_entries_after": _hhmm,
     "flat_by": _hhmm,

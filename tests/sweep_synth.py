@@ -131,6 +131,6 @@ STRATEGY = {
                "vol_lookback_bars": 20, "rvol_min": 1.0, "rvol_sessions": 10, "rsi_n": 14, "ema_n": 20,
                "h1_slope_bars": 3, "entry_window_minutes": 30, "stop_buffer_pct": 0.02, "max_itm_strikes": 2,
                "delta_min": 0.45, "delta_max": 0.8, "delta_target": 0.55, "max_theta_pct_per_day": 8,
-               "iv_shock_points": 2, "gap_allowance_pct": 10, "fut_min_coverage_pct": 95,
+               "iv_shock_points": 1, "gap_allowance_pct": 5, "fut_min_coverage_pct": 95,
                "fut_max_gap_minutes": 5, "signal_max_age_minutes": 2},
 }

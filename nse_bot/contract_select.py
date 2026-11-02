@@ -14,7 +14,7 @@ with theta per calendar day and vega per 1 IV point, as SAHI documents them.
 import datetime as dt
 import math
 
-from . import clock
+from . import clock, rr
 from .errors import DataError
 
 UNITS_NOTE = ("SAHI reports prices, theta and vega in paise; they are converted to rupees here. "
@@ -175,6 +175,17 @@ def select(chain, master, bias, spot, u_stop, u_target, now, cfg, params):
         else:
             r["verdict"] = "rejected: " + "; ".join(r["reasons"])
     return (eligible[0] if eligible else None), out
+
+
+def net_rr(row, qty, cfg, costs, day):
+    """Net 1:2 check (rr.py) for a selected row: entry already includes slippage; the conservative
+    sizing stop already includes the gap allowance and exit slippage; the target exit pays slippage."""
+    c = row["contract"]
+    try:
+        return rr.net(row["entry"], row["sizing_stop"], round(row["premium_target"] - cfg["slippage_ticks"] * c.tick_size, 2),
+                      qty, costs, day, c.cost_segment)
+    except Exception as e:                      # noqa: BLE001  (no number means NO TRADE)
+        return {"net_reward_risk": 0.0, "reason": str(e)}
 
 
 def plan_for(row, cfg, day):
