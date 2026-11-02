@@ -14,6 +14,7 @@ Files (inside the book's state_dir):
 import datetime as dt
 import json
 import os
+import re
 
 from . import clock, state
 
@@ -159,7 +160,8 @@ def signal_counts(rows):
         for r in last:
             if r["decision"] == "REJECTED":
                 for why in r["reasons"] or ["(no reason recorded)"]:
-                    tally[why.split(":")[0]] = tally.get(why.split(":")[0], 0) + 1
+                    k = re.sub(r"\d+(\.\d+)?", "#", why)[:90]          # group "stale: 12s" with "stale: 40s"
+                    tally[k] = tally.get(k, 0) + 1
         f["top_reasons"] = dict(sorted(tally.items(), key=lambda kv: -kv[1])[:6])
     return out
 
