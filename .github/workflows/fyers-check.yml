@@ -1,0 +1,25 @@
+# Read-only check of FYERS market data (NIFTY spot, option chain, futures, 1m candles,
+# depth). No orders: the script has no order call. Credentials come only from
+# repository secrets and are masked in the log. Run by hand after today's FYERS login.
+name: fyers-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Safety tests
+        run: python3 -m unittest discover -s tests -p "test_fyers_check.py"
+      - name: Check FYERS data endpoints
+        env:
+          FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/fyers_check.py
