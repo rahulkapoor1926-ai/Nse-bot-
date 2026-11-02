@@ -32,7 +32,7 @@ class Config(unittest.TestCase):
     def test_user_figures(self):
         c = config.load(EXAMPLE)
         self.assertEqual((c["max_daily_loss_inr"], c["daily_profit_stop_inr"], c["timezone"], c["currency"]),
-                         (500, 2000, "Asia/Kolkata", "INR"))
+                         (1000, 2000, "Asia/Kolkata", "INR"))
 
     def test_missing_key_fails_closed(self):
         self.assertIn("missing required key 'max_daily_loss_inr'", self.bad(max_daily_loss_inr=KeyError))
@@ -56,7 +56,7 @@ class Config(unittest.TestCase):
         self.assertIn("whole number", self.bad(max_trades_per_day=2.5))
 
     def test_cross_checks(self):
-        self.assertIn("exceeds max_daily_loss_inr", self.bad(max_risk_per_trade_inr=600))
+        self.assertIn("exceeds max_daily_loss_inr", self.bad(max_risk_per_trade_inr=1100))
         self.assertIn("no_entries_before < no_entries_after < flat_by", self.bad(no_entries_after="15:20"))
         self.assertIn("inside the NSE session", self.bad(no_entries_before="09:00"))
 

@@ -3,14 +3,23 @@
 The bot fails closed: when it cannot trust its state or data it stops entering
 trades and alerts. These are the situations and what to do.
 
-## Corrupted risk state (`state/risk/<date>.json`)
+## Corrupted risk state (`<risk_dir>/risk/<date>.json`)
+
+Since 2026-11-02 ORB and Sweep share ONE risk book: both configs name the same
+`risk_dir` (`state` for the standard books, `state/forward` for the forward
+books), while each keeps its own ledger in its `state_dir`. The file holds the
+combined entries, stop-loss exits, realised and open P&L, open lots and the
+lockout. Every update takes the lock file `<risk_dir>/risk/.lock` and re-reads
+the file first; if the lock cannot be taken within 20 seconds the entry is
+BLOCKED ("risk state unavailable") and the next cycle tries again.
 
 Symptom: `risk-status` shows `locked: true` with "state file corrupt", every
-order is BLOCKED.
+order is BLOCKED for both strategies.
 
 1. Leave the file in place; the bot does not overwrite it.
-2. Inspect it. If you can reconstruct the day from `state/paper/ledger.jsonl`
-   (fills and times), write a corrected file with the same fields.
+2. Inspect it. If you can reconstruct the day from both ledgers
+   (`state/paper/ledger.jsonl` and `state/sweep/paper/ledger.jsonl`: fills and
+   times), stop both processes and write a corrected file with the same fields.
 3. If not, keep the day locked. A new file is started automatically on the next
    trading day.
 

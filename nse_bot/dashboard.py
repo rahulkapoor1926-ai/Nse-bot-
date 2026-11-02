@@ -177,7 +177,8 @@ def build(state_dir, cfg, now):
 
     risk_today = None
     days = []
-    for path in sorted(glob.glob(os.path.join(state_dir, "risk", "*.json"))):
+    # the shared risk book (ORB + Sweep combined) lives in risk_dir, not in this book's state_dir
+    for path in sorted(glob.glob(os.path.join(cfg.get("risk_dir", state_dir), "risk", "*.json"))):
         try:
             d = state.read_json(path)
             days.append({"date": d["date"], "realized_pnl": d["realized_pnl"], "trades": d["trades"],

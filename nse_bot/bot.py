@@ -108,7 +108,7 @@ def manage_positions(ctx, now, ulast):
         est_exit = ctx.costs.leg("SELL", bid, p["qty"], now.date(), c.cost_segment)["total"]
         unrealized = (bid - avg) * p["qty"] - p["charges"] - est_exit
         ctx.marks[iid] = {"bid": bid, "time": now.isoformat(), "unrealized": round(unrealized, 2)}
-        ctx.risk.mark(unrealized, ctx.cfg, now)
+        ctx.risk.mark(unrealized, ctx.cfg, now, int(iid))
         if decision["action"] != "EXIT":
             ctx.notify.update(c, p, q, decision, ctx.marks[iid], now)
             continue
@@ -127,10 +127,10 @@ def manage_positions(ctx, now, ulast):
             "PAPER", c.symbol, res["filled_qty"], res["price"], decision["reason"], realized_now,
             "; %d STILL OPEN (partial fill)" % res["unfilled_qty"] if res["status"] == "PARTIAL" else ""), now)
         if after["qty"] == 0:
-            ctx.risk.record_exit(int(iid), realized_now, ctx.cfg, now)
+            # a stop-loss exit counts toward max_stop_exits_per_day in the shared risk book
+            ctx.risk.record_exit(int(iid), realized_now, ctx.cfg, now, reason=decision["reason"])
         else:
-            ctx.risk.doc["realized_pnl"] = round(ctx.risk.doc["realized_pnl"] + realized_now, 2)
-            ctx.risk.save()
+            ctx.risk.record_partial_exit(int(iid), realized_now, ctx.cfg, now)
         events.append(("exit", iid, res["status"]))
     return events
 
@@ -199,7 +199,8 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
                                       ctx.risk.remaining_loss(ctx.cfg))
         plan["net"] = _net_rr(ctx, c, fill, plan["stop"], plan["target"], sizing, now)
         order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
-                 "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY"}
+                 "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY",
+                 "kind": getattr(c, "kind", "index_options")}
         qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(
             ctx, row["underlying"], q, row.get("spot"), now, getattr(c, "kind", "index_options"))
         if getattr(c, "kind", "index_options") == "index_options":
@@ -210,22 +211,29 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
                                                                row.get("spot"))
             # options-desk context (OI, PCR, IV, Greeks, GEX estimate): recorded, never a filter
             cand["options_desk"] = options_desk.for_entry(ctx, "orb", row["underlying"], c.option_type, c.expiry, now)
-        verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
-        cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
+        # the shared risk book (ORB + Sweep) stays locked from this final check to record_entry, so the
+        # other strategy process cannot take the same entry, open slot or lot in between
+        with ctx.risk.entry_guard():
+            verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
+            cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
+            res = None
+            if verdict["verdict"] == "PASS":
+                res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
+                    "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
+                    "invalidate_below": row["signal"]["invalidate_below"],
+                    "invalidate_above": row["signal"]["invalidate_above"], "data_source": ctx.cfg.get("data_source"),
+                    "regime": cand["regime"]})
+                if res["status"] != "FAILED":
+                    lots = res["filled_qty"] // c.lot_size if order["kind"] == "index_options" else 1
+                    ctx.risk.record_entry(order, now, lots=max(1, lots))
         forward.orb_signal(ctx, now, strategy, cand, row)
         out.append(cand)
-        if verdict["verdict"] != "PASS":
+        if res is None:
             continue
-        res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
-            "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
-            "invalidate_below": row["signal"]["invalidate_below"],
-            "invalidate_above": row["signal"]["invalidate_above"], "data_source": ctx.cfg.get("data_source"),
-            "regime": cand["regime"]})
         cand["fill"] = res
         if res["status"] == "FAILED":
             ctx.alerts.emit("system_error", "entryfail-" + key, "paper entry failed: %s" % res["reason"], now)
             continue
-        ctx.risk.record_entry(order, now)
         ctx.alerts.emit("price", "filled-" + key, "PAPER bought %d %s @ %.2f; stop %.2f target %.2f" % (
             res["filled_qty"], c.symbol, res["price"], plan["stop"], plan["target"]), now)
         ctx.notify.opened(c, res, plan, now, strategy["name"])

@@ -55,14 +55,17 @@ jobs:
           BOOK: ${{ github.event.inputs.book || 'standard' }}
         run: |
           cp config/paper.example.json config/paper.json
-          # independent book for sweep_reversal: own ledger, risk lockout and dashboard
+          # sweep_reversal keeps its own ledger and dashboard (state_dir), but risk_dir is copied unchanged
+          # from paper.json, so ORB and Sweep share ONE risk book: entries, stop-loss exits, daily loss,
+          # profit stop and the single open lot are limits for both strategies combined (nse_bot/risk.py)
           python3 -c "import json; c=json.load(open('config/paper.json')); c['state_dir']='state/sweep'; json.dump(c, open('config/paper-sweep.json','w'), indent=2)"
           if [ "$BOOK" = "forward" ]; then
             # forward validation: separate ledgers; trades may go ahead while the backtest gate has no data
-            # (INSUFFICIENT EVIDENCE / NOT EVALUATED). Every other limit is unchanged.
+            # (INSUFFICIENT EVIDENCE / NOT EVALUATED). Every other limit is unchanged; both forward books
+            # share one risk book in state/forward (never the standard one).
             for pair in "paper.json state/forward/orb" "paper-sweep.json state/forward/sweep"; do
               set -- $pair
-              python3 -c "import json,sys; c=json.load(open('config/'+sys.argv[1])); c['state_dir']=sys.argv[2]; c['forward_validation']=True; json.dump(c, open('config/'+sys.argv[1],'w'), indent=2)" "$1" "$2"
+              python3 -c "import json,sys; c=json.load(open('config/'+sys.argv[1])); c['state_dir']=sys.argv[2]; c['risk_dir']='state/forward'; c['forward_validation']=True; json.dump(c, open('config/'+sys.argv[1],'w'), indent=2)" "$1" "$2"
             done
           fi
           python3 -m nse_bot --config config/paper.json validate-config
@@ -147,7 +150,6 @@ jobs:
           # recorders are not run on FYERS: its call budget is kept for trading decisions
           python3 -m nse_bot --config config/paper.json paper --refresh-master --until "$UNTIL" --every 30 \
             --max-calls-per-minute 22 --max-calls-per-second 2 --max-calls-per-day 2250 \
-            --strategy config/strategies/orb15-equity.example.json \
             --strategy config/strategies/orb15.example.json &
           ORB=$!
           for i in $(seq 1 60); do [ -s state/instruments-fyers.csv.symbols.json ] && break; sleep 5; done
@@ -195,7 +197,6 @@ jobs:
           SWEEP=$!
           PAPER=0
           python3 -m nse_bot --config config/paper.json paper --until "$UNTIL" --every 30 \
-            --strategy config/strategies/orb15-equity.example.json \
             --strategy config/strategies/orb15.example.json || PAPER=$?
           RECORD=0; SRECORD=0; SPAPER=0
           wait $REC || RECORD=$?

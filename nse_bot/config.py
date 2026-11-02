@@ -97,6 +97,10 @@ SCHEMA = {
     "max_trades_per_day": _num(lo=1, hi=50, integer=True),
     "max_open_positions": _num(lo=1, hi=5, integer=True),
     "max_lots_per_trade": _num(lo=1, integer=True),
+    # combined across every strategy sharing risk_dir (ORB + Sweep): one NIFTY lot open at a time
+    "max_open_lots": _num(lo=1, hi=1, integer=True),
+    # stop-loss exits per day, all strategies combined; reaching it locks new entries for the day
+    "max_stop_exits_per_day": _num(lo=1, hi=10, integer=True),
     "max_premium_outlay_pct": _num(lo=1, hi=100),
     "min_reward_risk": _num(lo=2.0),     # 1:2 minimum, measured net of all costs (rr.py)
     "no_entries_before": _hhmm,
@@ -115,6 +119,8 @@ SCHEMA = {
     # approval needs this many out-of-sample trades (100 = STRONGER EVIDENCE); 30 is the floor for any evaluation
     "gate_min_oos_trades": _num(lo=100, integer=True),
     "state_dir": _str,
+    # the daily RiskBook folder; every strategy process of one account names the SAME risk_dir (risk.py)
+    "risk_dir": _str,
     "holidays_file": _str,
     "costs_file": _str,
     "events_file": _str,
@@ -171,6 +177,11 @@ def _cross_checks(c):
         out.append("expiry_day_flat_by must not be later than flat_by")
     if c["forward_validation"] and "forward" not in c["state_dir"].replace("\\", "/").split("/"):
         out.append("forward_validation needs its own state_dir with a 'forward' folder (separate ledger)")
+    if c["forward_validation"] != ("forward" in c["risk_dir"].replace("\\", "/").split("/")):
+        out.append("risk_dir must contain a 'forward' folder exactly when forward_validation is on "
+                   "(forward and standard books never share a risk book)")
+    if c["max_lots_per_trade"] > c["max_open_lots"]:
+        out.append("max_lots_per_trade exceeds max_open_lots")
     for u in c["underlyings"]:
         if u not in c["index_names"]:
             out.append("index_names has no entry for %s" % u)
