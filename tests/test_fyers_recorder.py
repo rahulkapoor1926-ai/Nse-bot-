@@ -139,6 +139,15 @@ class Minute(Base):
         self.assertEqual(len(rows), 14)
         self.assertEqual(len({(r["ts"], r["symbol"]) for r in rows}), 14)
 
+    def test_an_older_column_layout_is_moved_aside_not_mixed(self):
+        p = os.path.join(self.dir, "rec", DAY.isoformat(), FR.FILE)
+        os.makedirs(os.path.dirname(p))
+        with open(p, "w") as f:
+            f.write("ts,symbol,last_trade_time\n2026-10-29T09:20:00+05:30,X,\n")
+        self.assertEqual(self.rec.record_minute(t(10, 0)), 7)
+        self.assertEqual(len(self.rows()), 7)
+        self.assertTrue(os.path.exists(p.replace(".csv", ".old1.csv")))
+
     def test_failed_request_marks_missing_backs_off_and_recovers(self):
         self.rec.record_minute(t(10, 0))
         self.md.fail = FyersError("FYERS /options-chain-v3 failed: HTTP 500, code None, boom")

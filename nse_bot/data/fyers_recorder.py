@@ -105,6 +105,15 @@ class Recorder(object):
             p = self._path(day)
             if os.path.exists(p):
                 with open(p, newline="", encoding="utf-8") as f:
+                    head = next(csv.reader(f), None)
+                if head and tuple(head) != COLUMNS:          # older layout: kept aside, never mixed in
+                    n = 1
+                    while os.path.exists(p.replace(".csv", ".old%d.csv" % n)):
+                        n += 1
+                    os.replace(p, p.replace(".csv", ".old%d.csv" % n))
+                    self.log("%s had an older column layout; moved to .old%d.csv" % (p, n))
+            if os.path.exists(p):
+                with open(p, newline="", encoding="utf-8") as f:
                     for r in csv.DictReader(f):
                         if r.get("ts") and r.get("symbol"):
                             keys.add((r["ts"], r["symbol"]))
