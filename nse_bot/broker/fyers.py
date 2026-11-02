@@ -42,6 +42,7 @@ READ_PATHS = ("/quotes", "/depth", "/history", "/options-chain-v3", "/futures-ch
 TOKEN_PATH = "/validate-authcode"
 # Index symbols verified live. Others are refused rather than guessed.
 INDEX_SYMBOLS = {"NIFTY": "NSE:NIFTY50-INDEX"}
+VIX_SYMBOL = "NSE:INDIAVIX-INDEX"      # verified live 2026-11-02 (247 daily candles for one year)
 MINUTES = {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "1d": 1440}
 RESOLUTION = {"1m": "1", "3m": "3", "5m": "5", "15m": "15", "30m": "30", "1h": "60", "1d": "D"}
 MAX_DAYS = {"D": 365}                 # per request; intraday uses 90 (FYERS allows up to 100)
@@ -318,8 +319,27 @@ class FyersReadOnly(MarketData):
                 q = self.quote_from_depth(l["instrument_id"], d)
                 l.update({"bid": q.bid, "ask": q.ask, "bid_qty": q.bid_qty, "ask_qty": q.ask_qty,
                           "ts": q.ts.isoformat() if q.ts else None})
+        vix = data.get("indiavixData") or {}
         return {"format": "legs", "source": "fyers", "spot": spot, "legs": legs, "units_note": UNITS_NOTE,
-                "expiry": expiry.isoformat() if expiry else None}
+                "expiry": expiry.isoformat() if expiry else None,
+                # chain-level figures exactly as FYERS reports them (for the options-desk context)
+                "totals": {"call_oi": _int(data.get("callOi")), "put_oi": _int(data.get("putOi"))},
+                "india_vix": _price(vix.get("ltp")),
+                "expiry_epoch": next((_int(e.get("expiry")) for e in data.get("expiryData") or []
+                                      if expiry is None or e.get("date") == expiry.strftime("%d-%m-%Y")), None)}
+
+    def vix_daily(self, end, days=400):
+        """India VIX daily closes [(date, close)] up to `end` (one call, cached for the day)."""
+        key = ("vix", end.date())
+        if key not in self._candle_cache:
+            start = end - dt.timedelta(days=days)
+            doc = self._request("GET", DATA, "/history", {
+                "symbol": VIX_SYMBOL, "resolution": "D", "date_format": 0, "range_from": int(start.timestamp()),
+                "range_to": int(end.timestamp()), "cont_flag": 1})
+            rows = [(clock.from_epoch_ms(int(c[0]) * 1000).date(), float(c[4])) for c in doc.get("candles") or []
+                    if len(c) > 4 and c[4] is not None]
+            self._candle_cache[key] = rows
+        return self._candle_cache[key]
 
 
 # -- instrument master -----------------------------------------------------------

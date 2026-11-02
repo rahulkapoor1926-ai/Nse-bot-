@@ -15,7 +15,7 @@ failure never turns into "position closed" or "price = 0".
 
 import logging
 
-from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, orderflow, quotes, rr, scanner, volume_profile
+from . import budget, clock, entry, exit as exit_mod, feedcheck, gate, options_desk, orderflow, quotes, rr, scanner, volume_profile
 from .errors import NseBotError
 
 log = logging.getLogger("nse_bot")
@@ -199,6 +199,8 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
             # auction context (volume profile, initial balance): recorded, never a filter
             cand["auction_context"] = volume_profile.for_entry(ctx, "orb", row["underlying"], c.option_type, now,
                                                                row.get("spot"))
+            # options-desk context (OI, PCR, IV, Greeks, GEX estimate): recorded, never a filter
+            cand["options_desk"] = options_desk.for_entry(ctx, "orb", row["underlying"], c.option_type, c.expiry, now)
         verdict = ctx.risk.check(order, ctx.cfg, ctx.cal, now, gstatus, qp, sizing, plan)
         cand.update({"plan": plan, "sizing": sizing, "risk": verdict})
         out.append(cand)

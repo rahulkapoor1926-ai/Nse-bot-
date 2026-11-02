@@ -41,7 +41,32 @@ def main():
         c = h.get("candles") or []
         print("%s daily history: HTTP %s, %d candles, first %s last %s" % (
             sym, st, len(c), c[0] if c else None, c[-1] if c else None))
+    evaluate(data, c)
     return 0
+
+
+def evaluate(data, vix_candles):
+    """The bot's options-desk analysis on this live chain (nearest expiry)."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from nse_bot import clock, options_desk
+    rows = data.get("optionsChain") or []
+    legs = [{"option_type": r["option_type"], "strike": float(r["strike_price"]), "oi": r.get("oi"),
+             "prev_oi": r.get("prev_oi"), "volume": r.get("volume"), "ltp": r.get("ltp"),
+             **{g: (r.get("greeks") or {}).get(g) for g in ("delta", "gamma", "theta", "vega", "iv")}}
+            for r in rows if r.get("option_type") in ("CE", "PE")]
+    exp = (data.get("expiryData") or [{}])[0]
+    chain = {"spot": rows[0].get("ltp"), "legs": legs, "expiry": None, "india_vix": (data.get("indiavixData") or {}).get("ltp"),
+             "totals": {"call_oi": data.get("callOi"), "put_oi": data.get("putOi")}, "expiry_epoch": int(exp.get("expiry"))}
+    vix = [(clock.from_epoch_ms(int(x[0]) * 1000).date(), float(x[4])) for x in vix_candles]
+    now = clock.now_ist()
+    desk = options_desk.analyse(chain, now, vix)
+    print("\n== options desk on the live chain at %s" % now.strftime("%H:%M:%S"))
+    print(json.dumps({k: v for k, v in desk.items() if k != "status"}, indent=1, default=str)[:3500])
+    for setup in ("orb", "sweep"):
+        for d in (1, -1):
+            c = options_desk.context(setup, d, desk)
+            print("%-5s %-4s %-10s supports=%s cautions=%s notes=%s" % (setup, c["direction"], c["verdict"],
+                                                                       c["supports"], c["cautions"], c["notes"]))
 
 
 if __name__ == "__main__":
