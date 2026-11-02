@@ -37,7 +37,7 @@ class Risk(unittest.TestCase):
 
     def test_refusals(self):
         book = risk.RiskBook.open(self.dir, DAY)
-        self.assertIn("validation gate: INSUFFICIENT DATA", self.check(book, gate="INSUFFICIENT DATA")["reasons"])
+        self.assertIn("validation gate: INSUFFICIENT EVIDENCE", self.check(book, gate="INSUFFICIENT EVIDENCE")["reasons"])
         self.assertIn("quote: stale", self.check(book, q=["stale"])["reasons"])
         self.assertTrue(any("zero lots" in x for x in self.check(book, sizing={"lots": 0, "reasons": ["x"]})["reasons"]))
         self.assertTrue(any("entry window" in x for x in self.check(book, now=t(15, 0))["reasons"]))

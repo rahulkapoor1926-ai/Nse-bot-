@@ -8,7 +8,7 @@ No look-ahead:
     charges within max_risk_per_trade_inr); a signal that does not fit is a NO TRADE, as live;
   * exits use later bars only, at the BID minus slippage ticks; a bar that
     touches both stop and target counts as the stop;
-  * regime labels use the previous session and today's open only.
+  * regime labels (regime.py) use sessions before the trade day only.
 
 Independence: within a session a new signal is looked for only after the
 previous trade's exit bar, and at most `max_signals_per_day` per underlying.
@@ -24,7 +24,7 @@ import datetime as dt
 import hashlib
 from collections import Counter
 
-from .. import budget, clock, patterns, rr
+from .. import budget, clock, patterns, regime, rr
 from ..errors import CalendarError, DataError
 from ..instruments import Contract
 from ..exit import plan as exit_plan
@@ -48,24 +48,9 @@ def coin_flip(u, day, k):
 
 
 def _regime(ds, u, day, history):
-    """Volatility regime from data known before the session; 'gap' from today's open."""
-    prev = [d for d in history if d < day][-21:]
-    if len(prev) < 21:
-        vol = "unknown"
-    else:
-        def rng(d):
-            b = ds.underlying[u][d]
-            return (max(x[2] for x in b) - min(x[3] for x in b)) / b[-1][4]
-        last = rng(prev[-1])
-        trailing = sorted(rng(d) for d in prev[:-1])
-        vol = "high_vol" if last > trailing[len(trailing) // 2] else "low_vol"
-    gap = "no_gap"
-    if prev:
-        pc = ds.underlying[u][prev[-1]][-1][4]
-        op = ds.underlying[u][day][0][1]
-        if abs(op - pc) / pc > 0.005:
-            gap = "gap"
-    return "%s/%s" % (vol, gap)
+    """regime.classify on the sessions before `day` (the same definition as the live bot)."""
+    prev = [d for d in history if d < day][-(regime.VOL_SESSIONS + 2):]
+    return regime.classify([b for d in prev for b in ds.underlying[u][d]], day)
 
 
 def _contract(u, key, rec):
@@ -208,7 +193,7 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
                 pb = ds.underlying[u][prev[-1]]
                 ph, pl = max(b[2] for b in pb), min(b[3] for b in pb)
             counts["raw_occurrences"] += patterns.raw_occurrences(strategy, ubars, minutes, ph, pl)
-            regime = _regime(ds, u, day, history)
+            reg = _regime(ds, u, day, history)
             start, k = 0, 0
             while k < per_day:
                 sig = patterns.detect(strategy, ubars, minutes, ph, pl, start=start)
@@ -238,7 +223,7 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
                 if t["unresolved"]:
                     unresolved.append(t)
                     break
-                t["regime"] = regime
+                t.update(regime.fields(reg))
                 trades.append(t)
                 counts["executed"] += 1
                 start = (idx if idx is not None else sig["bar_index"]) + 1

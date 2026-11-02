@@ -26,7 +26,7 @@ import hashlib
 import math
 from collections import Counter
 
-from .. import budget, clock, patterns, rr
+from .. import budget, clock, patterns, regime, rr
 from ..errors import CalendarError, DataError
 from ..exit import plan as exit_plan
 from ..instruments import Stock
@@ -149,16 +149,10 @@ def simulate_trade(ds, sym, day, sig, strategy, cfg, costs, recs):
 
 
 def _regime(ds, sym, day, history):
-    """high_vol / low_vol from the previous session's range vs the 20 before it (known before the open)."""
-    prev = [d for d in history if d < day][-21:]
-    if len(prev) < 21:
-        return "unknown"
-
-    def rng(d):
-        b = ds.bars[sym][d]
-        return (max(r["high"] for r in b) - min(r["low"] for r in b)) / b[-1]["close"]
-    trailing = sorted(rng(d) for d in prev[:-1])
-    return "high_vol" if rng(prev[-1]) > trailing[len(trailing) // 2] else "low_vol"
+    """regime.classify on the stock's own sessions before `day` (the live bot uses the same series)."""
+    prev = [d for d in history if d < day][-(regime.VOL_SESSIONS + 2):]
+    return regime.classify([(r["ts"], r["open"], r["high"], r["low"], r["close"]) for d in prev
+                            for r in ds.bars[sym][d]], day)
 
 
 def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
@@ -222,7 +216,7 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
                 if t["unresolved"]:
                     unresolved += 1
                     break
-                t["regime"] = "%s/%s" % (t["kind"], _regime(ds, sym, day, history))
+                t.update(regime.fields(_regime(ds, sym, day, history)))
                 trades.append(t)
                 counts["executed"] += 1
                 start = (idx if idx is not None else sig["bar_index"]) + 1

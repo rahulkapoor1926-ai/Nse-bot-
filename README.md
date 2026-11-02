@@ -83,10 +83,11 @@ clock → instruments → quote quality → scanner → entry candidate → exit
 **validation gate** → budget (lots) → risk (limits + lockout) → paper broker →
 ledger, alerts, report. Any refusal stops the chain and says why.
 
-The gate is the hard part: a strategy needs at least 10,000 valid independent
-historical examples, on real option data with bid/ask, before any entry is
-allowed. Without such data every candidate is refused with INSUFFICIENT DATA.
-See `docs/nse/AUDIT.md` for what that means in practice.
+The gate is the hard part: a strategy is approved only on genuine historical
+option data with bid/ask, with at least 100 out-of-sample trades that pass every
+check (30-99 is INITIAL EVIDENCE, reported but never approved). Without such
+data every candidate in the standard book is refused with INSUFFICIENT EVIDENCE.
+The 10,000-example rule was replaced on 2026-11-02; see `docs/nse/VALIDATION.md`.
 
 ## Documents
 

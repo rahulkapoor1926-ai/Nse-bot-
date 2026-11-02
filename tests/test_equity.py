@@ -192,22 +192,31 @@ class Backtest(unittest.TestCase):
         ds = store.load_equity(self.e)
         cfg = dict(self.cfg, gate_allow_estimated_spread=False)
         d = gate.evaluate(ds, synth.EQ_STRATEGY, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
-        self.assertEqual(d["status"], "INSUFFICIENT DATA")
+        self.assertEqual(d["status"], "INSUFFICIENT EVIDENCE")
         self.assertIn("no historical bid/ask", d["reasons"][0])
         cfg = dict(self.cfg, gate_allow_estimated_spread=True)
         d = gate.evaluate(ds, synth.EQ_STRATEGY, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
-        self.assertEqual(d["status"], "INSUFFICIENT DATA")         # 10,000 still required
-        self.assertIn("required", d["reasons"][0])
+        self.assertEqual(d["status"], "INSUFFICIENT EVIDENCE")     # too few out-of-sample trades
+        self.assertIn("at least 30 are needed", d["reasons"][0])
         self.assertIn("assumed spread", d["fill_model"])
 
     def test_gate_full_path_in_memory_threshold(self):
         ds = store.load_equity(self.q)
-        cfg = dict(self.cfg, gate_min_examples=40, gate_min_oos_trades=5)
-        d = gate.evaluate(ds, synth.EQ_STRATEGY, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
+        cfg = dict(self.cfg, gate_min_oos_trades=5)
+        saved, gate.MIN_OOS_INITIAL = gate.MIN_OOS_INITIAL, 5          # in memory only: exercise every step
+        try:
+            d = gate.evaluate(ds, synth.EQ_STRATEGY, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
+        finally:
+            gate.MIN_OOS_INITIAL = saved
         self.assertIn(d["status"], ("APPROVED", "REJECTED"))
-        for k in ("train", "validation", "test", "baseline_test", "sensitivity", "test_by_regime"):
+        for k in ("train", "validation", "sensitivity"):
             self.assertIn(k, d)
-        self.assertIn("random entry bar", d["baseline"])
+        if "test" in d:                          # the test period is touched only after validation and sensitivity
+            for k in ("baseline_test", "test_by_regime", "test_by_trend", "test_by_volatility"):
+                self.assertIn(k, d)
+            self.assertIn("random entry bar", d["baseline"])
+        else:
+            self.assertEqual(d["status"], "REJECTED")
         self.assertEqual(gate.status_for(self.state, synth.EQ_STRATEGY), "REJECTED (synthetic data)")
 
 
@@ -242,7 +251,8 @@ class PaperCycle(unittest.TestCase):
         self.cm = CostModel.load(synth.COSTS)
         from nse_bot import state
         state.write_json(os.path.join(self.dir, "gate", "%s.json" % gate.strategy_hash(synth.EQ_STRATEGY)),
-                         {"status": "APPROVED", "synthetic_data": False, "dataset_digest": None})
+                         dict({"status": "APPROVED", "synthetic_data": False, "dataset_digest": None},
+                              **gate.fingerprint(self.cfg, self.cm)))
 
     def tearDown(self):
         shutil.rmtree(self.dir)

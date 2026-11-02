@@ -16,7 +16,7 @@ import os
 from . import clock, rr, state
 
 # gate states a forward-validation book may trade through (no evidence yet); REJECTED/STALE always block
-FORWARD_GATE_OK = ("INSUFFICIENT DATA", "NOT EVALUATED")
+FORWARD_GATE_OK = ("INSUFFICIENT EVIDENCE", "NOT EVALUATED")
 from .errors import StateCorrupt
 
 WARNING = ("Limits are enforced on fills the bot knows about. Slippage, gaps and failed exits can "

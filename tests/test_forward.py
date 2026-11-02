@@ -31,7 +31,7 @@ class Gate(unittest.TestCase):
                           {"reward_risk": 2.5, "net": {"net_reward_risk": 2.2}})
 
     def test_forward_book_trades_through_missing_evidence_only(self):
-        r = self.check("INSUFFICIENT DATA", True)
+        r = self.check("INSUFFICIENT EVIDENCE", True)
         self.assertEqual(r["verdict"], "PASS")
         self.assertIn("forward validation book", r["forward_note"])
         self.assertEqual(self.check("NOT EVALUATED", True)["verdict"], "PASS")
@@ -39,7 +39,7 @@ class Gate(unittest.TestCase):
             self.assertEqual(self.check(g, True)["verdict"], "BLOCK", g)
 
     def test_standard_book_unchanged(self):
-        self.assertIn("validation gate: INSUFFICIENT DATA", self.check("INSUFFICIENT DATA", False)["reasons"])
+        self.assertIn("validation gate: INSUFFICIENT EVIDENCE", self.check("INSUFFICIENT EVIDENCE", False)["reasons"])
 
     def test_forward_needs_its_own_state_dir(self):
         with self.assertRaises(ConfigError):
@@ -96,9 +96,9 @@ class OrbForward(unittest.TestCase):
         self.assertEqual(self.broker.ledger.records(), [])
 
 
-def trade(family, net, i, strategy=None):
+def trade(family, net, i, strategy=None, trend="trending", volatility="normal_volatility"):
     return {"family": family, "strategy": strategy or family.lower(), "net": net, "gross": net + 30, "costs": 30.0,
-            "exit_time": "2026-11-02T10:%02d:00+05:30" % i}
+            "exit_time": "2026-11-02T10:%02d:00+05:30" % i, "trend": trend, "volatility": volatility}
 
 
 class Stats(unittest.TestCase):
@@ -110,21 +110,41 @@ class Stats(unittest.TestCase):
         self.assertEqual(s["profit_factor"], 2.0)                                     # 500 / 250
         self.assertEqual(s["max_drawdown_inr"], 250.0)                                # 300 -> 50
         self.assertEqual(s["max_drawdown_pct_of_capital"], 1.25)
-        self.assertIn("INSUFFICIENT SAMPLE: 4 completed trades", s["sample"])
+        self.assertIn("INSUFFICIENT EVIDENCE: 4 completed trades", s["sample"])
+        self.assertEqual(s["evidence"], "INSUFFICIENT EVIDENCE")
+
+    def test_by_regime_each_with_its_own_evidence(self):
+        tr = [trade("ORB", 10, i % 60, trend="trending") for i in range(35)] + \
+             [trade("ORB", -5, i % 60, trend="sideways", volatility="high_volatility") for i in range(3)]
+        r = forward.by_regime(tr, 20000)
+        self.assertEqual(r["trend"]["trending"]["evidence"], "INITIAL EVIDENCE")
+        self.assertEqual(r["trend"]["sideways"]["evidence"], "INSUFFICIENT EVIDENCE")
+        self.assertEqual(r["volatility"]["high_volatility"]["trades"], 3)
 
     def test_no_trades_and_no_losses(self):
         self.assertEqual(forward.stats([], 20000)["profit_factor_note"], "no trades")
         self.assertEqual(forward.stats([trade("ORB", 10, 1)], 20000)["profit_factor_note"], "no losing trades yet")
-        self.assertIn("SMALL SAMPLE", forward.stats([trade("ORB", 10, i % 60) for i in range(40)], 20000)["sample"])
+        self.assertEqual(forward.stats([trade("ORB", 10, i % 60) for i in range(40)], 20000)["evidence"],
+                         "INITIAL EVIDENCE")
+        self.assertEqual(forward.stats([trade("ORB", 10, i % 60) for i in range(100)], 20000)["evidence"],
+                         "STRONGER EVIDENCE")
+        self.assertEqual(forward.stats([trade("ORB", 10, i % 60) for i in range(29)], 20000)["evidence"],
+                         "INSUFFICIENT EVIDENCE")
 
-    def test_report_keeps_families_apart(self):
+    def test_report_keeps_strategies_apart(self):
         d = tempfile.mkdtemp()
         try:
-            forward.record_signal(d, t(10, 0), "sweep-reversal", "NIFTY", "X", "10:00", "REJECTED", ["quote: stale"])
+            forward.record_signal(d, t(10, 0), "sweep-reversal", "NIFTY", "X", "10:00", "REJECTED", ["quote: stale"],
+                                  {"regime": "sideways/high_volatility", "trend": "sideways",
+                                   "volatility": "high_volatility"})
             doc, md = forward.report([("sweep", d)], 20000, t(15, 35))
-            self.assertEqual(doc["families"]["ORB"]["trades"], 0)
-            self.assertEqual(doc["signals"]["Sweep"]["rejected"], 1)
-            self.assertIn("INSUFFICIENT SAMPLE: 0 completed trades", md)
+            self.assertEqual(doc["strategies"]["orb15-atm"]["overall"]["trades"], 0)
+            self.assertEqual(doc["strategies"]["sweep-reversal"]["overall"]["evidence"], "INSUFFICIENT EVIDENCE")
+            self.assertEqual(doc["signals"]["sweep-reversal"]["rejected"], 1)
+            self.assertEqual(doc["signals"]["sweep-reversal"]["by_regime"], {"sideways/high_volatility": 1})
+            self.assertIn("INSUFFICIENT EVIDENCE", md)
+            self.assertNotIn("| PASS", md)
+            self.assertIn("|---|---|---|", md)
             self.assertIn("No synthetic or artificial trades", md)
         finally:
             shutil.rmtree(d)

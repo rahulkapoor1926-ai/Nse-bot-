@@ -59,7 +59,7 @@ jobs:
           python3 -c "import json; c=json.load(open('config/paper.json')); c['state_dir']='state/sweep'; json.dump(c, open('config/paper-sweep.json','w'), indent=2)"
           if [ "$BOOK" = "forward" ]; then
             # forward validation: separate ledgers; trades may go ahead while the backtest gate has no data
-            # (INSUFFICIENT DATA / NOT EVALUATED). Every other limit is unchanged.
+            # (INSUFFICIENT EVIDENCE / NOT EVALUATED). Every other limit is unchanged.
             for pair in "paper.json state/forward/orb" "paper-sweep.json state/forward/sweep"; do
               set -- $pair
               python3 -c "import json,sys; c=json.load(open('config/'+sys.argv[1])); c['state_dir']=sys.argv[2]; c['forward_validation']=True; json.dump(c, open('config/'+sys.argv[1],'w'), indent=2)" "$1" "$2"

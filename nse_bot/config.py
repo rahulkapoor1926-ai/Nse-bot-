@@ -11,7 +11,6 @@ import re
 from .errors import ConfigError
 
 UNDERLYINGS = ("NIFTY", "BANKNIFTY")
-MIN_GATE_EXAMPLES = 10000            # the user's floor; the file may raise it, never lower it
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -113,8 +112,8 @@ SCHEMA = {
     "slippage_ticks": _num(lo=0, integer=True),
     "max_consecutive_errors": _num(lo=1, hi=20, integer=True),
     "event_blackout_minutes": _num(lo=0, integer=True),
-    "gate_min_examples": _num(lo=MIN_GATE_EXAMPLES, integer=True),
-    "gate_min_oos_trades": _num(lo=30, integer=True),
+    # approval needs this many out-of-sample trades (100 = STRONGER EVIDENCE); 30 is the floor for any evaluation
+    "gate_min_oos_trades": _num(lo=100, integer=True),
     "state_dir": _str,
     "holidays_file": _str,
     "costs_file": _str,
@@ -131,7 +130,7 @@ SCHEMA = {
     # order-flow confirmation of ORB / sweep entries (orderflow.py); "required" blocks when not confirmed
     "orderflow_confirmation": _choice("required", "off"),
     # forward validation book (forward.py, approved by jojo 2026-11-02): paper entries may go ahead while
-    # the backtest gate has INSUFFICIENT DATA / NOT EVALUATED; REJECTED or STALE still block. Own state_dir.
+    # the backtest gate has INSUFFICIENT EVIDENCE / NOT EVALUATED; REJECTED or STALE still block. Own state_dir.
     "forward_validation": _bool,
 }
 

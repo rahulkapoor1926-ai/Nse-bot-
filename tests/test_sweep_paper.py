@@ -95,7 +95,8 @@ class Paper(unittest.TestCase):
 
     def test_approved_but_too_risky_for_rs_500_is_still_blocked(self):
         state.write_json(os.path.join(self.dir, "gate", "%s.json" % gate.strategy_hash(S.STRATEGY)),
-                         {"status": "APPROVED", "synthetic_data": False, "dataset_digest": None})
+                         dict({"status": "APPROVED", "synthetic_data": False, "dataset_digest": None},
+                              **gate.fingerprint(self.cfg, self.cm)))
         self.cycle(ENTRY)
         [rep] = self.reports()
         self.assertEqual(rep["decision"], "BLOCKED")

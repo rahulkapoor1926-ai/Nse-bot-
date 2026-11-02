@@ -10,7 +10,7 @@ Data per underlying (read-only SAHI calls, fetched once per new closed minute):
 
 import datetime as dt
 
-from . import budget, clock, contract_select, decisions, entry, feedcheck, forward, gate, options_desk, orderflow, quotes, scanner, sweep, volume_profile
+from . import budget, clock, contract_select, decisions, entry, feedcheck, forward, gate, options_desk, orderflow, quotes, regime, scanner, sweep, volume_profile
 from .errors import NseBotError
 
 _CACHE = {}
@@ -80,6 +80,8 @@ def look(ctx, now, strategy):
         chosen = rep.pop("_selected", None)
         u_stop = rep.pop("_u_stop", None)
         if rep["decision"] == "SETUP" and chosen:
+            # market regime from the daily bars already fetched (regime.py): recorded, never a filter
+            rep.setdefault("execution", {})["regime"] = regime.fields(regime.classify(d["u1d"], day))
             out.extend(_execute(ctx, now, strategy, u, rep, chosen, u_stop))
         decisions.record(ctx.cfg["state_dir"], rep, day)
         forward.sweep_signal(ctx, now, strategy, u, rep)
@@ -124,7 +126,7 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     sizing = budget.size(chosen["entry"], chosen["sizing_stop"], c, ctx.cfg, ctx.costs, now.date(),
                          ctx.risk.remaining_loss(ctx.cfg))
     plan["net"] = contract_select.net_rr(chosen, sizing.get("quantity") or c.lot_size, ctx.cfg, ctx.costs, now.date())
-    gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy))
+    gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy), ctx.cfg, ctx.costs)
     order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
              "signal_known_at": known.isoformat(), "side": "BUY"}
     qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(ctx, u, q, signal["trigger_close"], now)
@@ -145,7 +147,8 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
         "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
         "invalidate_below": signal["invalidate_below"], "invalidate_above": signal["invalidate_above"],
-        "decision_report": rep["evaluated_at"], "data_source": ctx.cfg.get("data_source")})
+        "decision_report": rep["evaluated_at"], "data_source": ctx.cfg.get("data_source"),
+        "regime": ex.get("regime")})
     ex["fill"] = {k: v for k, v in res.items() if k != "charges"}
     if res["status"] == "FAILED":
         ctx.alerts.emit("system_error", "entryfail-" + key, "paper entry failed: %s" % res["reason"], now)

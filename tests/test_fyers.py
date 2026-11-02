@@ -309,7 +309,7 @@ class Rules(unittest.TestCase):
         self.assertEqual(c["data_source"], "fyers")
         self.assertEqual(c["underlyings"], ["NIFTY"])
         self.assertEqual((c["capital_inr"], c["max_daily_loss_inr"], c["max_lots_per_trade"],
-                          c["max_open_positions"], c["gate_min_examples"]), (20000, 500, 1, 1, 10000))
+                          c["max_open_positions"], c["gate_min_oos_trades"]), (20000, 500, 1, 1, 100))
         self.assertFalse(c["live_orders_enabled"])
 
 

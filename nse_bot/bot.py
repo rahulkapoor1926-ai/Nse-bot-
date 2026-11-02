@@ -15,7 +15,7 @@ failure never turns into "position closed" or "price = 0".
 
 import logging
 
-from . import budget, clock, entry, exit as exit_mod, feedcheck, forward, gate, options_desk, orderflow, quotes, rr, scanner, volume_profile
+from . import budget, clock, entry, exit as exit_mod, feedcheck, forward, gate, options_desk, orderflow, quotes, regime, rr, scanner, volume_profile
 from .errors import NseBotError
 
 log = logging.getLogger("nse_bot")
@@ -162,7 +162,7 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         rows = scanner.scan(ubars, prev, ctx.master, ctx.cal, now, ctx.cfg, strategy)
     else:
         rows = scanner.scan_equities(ubars, prev, ctx.master, now, ctx.cfg, strategy)
-    gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy))
+    gstatus = gate.status_for(ctx.cfg["state_dir"], strategy, _digest(ctx, strategy), ctx.cfg, ctx.costs)
     out = []
     for row in rows:
         if row["status"] != "SIGNAL":
@@ -181,6 +181,10 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         cand = entry.candidate(row, q, now, ctx.cfg, ctx.cal, ctx.events)
         if cand["status"] == "WAITING":
             continue                            # not yet at the entry point; nothing to log or alert
+        # market regime (regime.py): recorded on every signal and trade, never a filter
+        riid = ctx.master.index_id(ctx.cfg["index_names"][row["underlying"]]) \
+            if strategy["instrument"] == "index_option" else c.instrument_id
+        cand["regime"] = regime.fields(regime.for_day(ctx, row["underlying"], riid, now.date()))
         key = "%s-%s" % (c.instrument_id, row["signal"]["known_at"].strftime("%H%M"))
         ctx.alerts.emit("candidate", key, "%s %s: %s" % (cand["status"], c.symbol, "; ".join(
             cand.get("reasons_for") or cand["reasons"])), now)
@@ -215,7 +219,8 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
         res = ctx.broker.buy(c, sizing["lots"], q, now, meta={
             "plan": plan, "strategy": strategy["name"], "signal_known_at": order["signal_known_at"],
             "invalidate_below": row["signal"]["invalidate_below"],
-            "invalidate_above": row["signal"]["invalidate_above"], "data_source": ctx.cfg.get("data_source")})
+            "invalidate_above": row["signal"]["invalidate_above"], "data_source": ctx.cfg.get("data_source"),
+            "regime": cand["regime"]})
         cand["fill"] = res
         if res["status"] == "FAILED":
             ctx.alerts.emit("system_error", "entryfail-" + key, "paper entry failed: %s" % res["reason"], now)

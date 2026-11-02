@@ -41,7 +41,8 @@ class Config(unittest.TestCase):
         self.assertIn("unknown key 'risk_multiplier'", self.bad(risk_multiplier=2))
 
     def test_gate_floor_cannot_be_lowered(self):
-        self.assertIn("gate_min_examples must be >= 10000", self.bad(gate_min_examples=9999))
+        self.assertIn("gate_min_oos_trades must be >= 100", self.bad(gate_min_oos_trades=99))
+        self.assertIn("unknown key 'gate_min_examples'", self.bad(gate_min_examples=10000))   # replaced 2026-11-02
 
     def test_live_orders_cannot_be_enabled(self):
         self.assertIn("live_orders_enabled", self.bad(live_orders_enabled=True))

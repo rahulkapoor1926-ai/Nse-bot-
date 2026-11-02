@@ -154,38 +154,126 @@ class Gate(Base):
         self.assertIn("synthetic", d["reasons"][0])
         self.assertTrue(gate.status_for(self.state, synth.STRATEGY).startswith("REJECTED"))
 
-    def test_insufficient_data_blocks(self):
+    def test_small_sample_is_insufficient_evidence_and_test_period_untouched(self):
         d = gate.evaluate(self.ds, synth.STRATEGY, self.cfg, self.cm, self.cal, self.state, allow_synthetic=True)
-        self.assertEqual(d["status"], "INSUFFICIENT DATA")
-        self.assertIn("80 valid independent examples; 10000 required", d["reasons"][0])
+        self.assertEqual(d["status"], "INSUFFICIENT EVIDENCE")
+        self.assertEqual(d["evidence"], "INSUFFICIENT EVIDENCE")
+        self.assertIn("out-of-sample trades to be expected", d["reasons"][0])
         self.assertEqual(d["counts"]["independent_examples"], 80)
         self.assertNotIn("test", d)                  # the test period is not touched
+        self.assertNotIn("10000", json.dumps(d))     # no example-count requirement any more
 
-    def test_full_path_with_lowered_threshold_in_memory_only(self):
-        cfg = dict(self.cfg, gate_min_examples=50, gate_min_oos_trades=10)
+    def test_no_option_bid_ask_is_insufficient_evidence(self):
+        d = tempfile.mkdtemp(dir=self.tmp)
+        synth.write_dataset(d, self.days[:5], strikes=2, drop_quotes=True)
+        doc = gate.evaluate(store.load(d), synth.STRATEGY, self.cfg, self.cm, self.cal, self.state,
+                            allow_synthetic=True)
+        self.assertEqual(doc["status"], "INSUFFICIENT EVIDENCE")
+        self.assertIn("no genuine historical option bid/ask", doc["reasons"][0])
+
+    def test_record_carries_code_config_costs_and_orderflow_limitation(self):
+        cfg = dict(self.cfg, orderflow_confirmation="required")
+        d = gate.evaluate(self.ds, synth.STRATEGY, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
+        for k in ("code_version", "config_hash", "costs_hash"):
+            self.assertTrue(d[k])
+        self.assertTrue(any("order-flow filter NOT SIMULATED" in x for x in d["limitations"]))
+
+
+class BigGate(unittest.TestCase):
+    """A full 2026 calendar of synthetic sessions: enough out-of-sample trades to reach each verdict."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.days = synth.trading_days(240)
+        synth.write_dataset(os.path.join(cls.tmp, "up"), cls.days, strikes=4)
+        cls.ds = store.load(os.path.join(cls.tmp, "up"))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def setUp(self):
+        self.state = tempfile.mkdtemp(dir=self.tmp)
+        self.cfg = synth.cfg(self.state)
+        self.cm = CostModel.load(synth.COSTS)
+        self.cal = synth.calendar()
+
+    def test_initial_evidence_is_not_approval(self):
+        d = gate.evaluate(self.ds, synth.STRATEGY, self.cfg, self.cm, self.cal, self.state, allow_synthetic=True)
+        self.assertGreaterEqual(d["test"]["trades"], 30)
+        self.assertLess(d["test"]["trades"], 100)
+        self.assertEqual(d["status"], "INSUFFICIENT EVIDENCE", d["reasons"])
+        self.assertEqual(d["evidence"], "INITIAL EVIDENCE")
+        self.assertIn("INITIAL EVIDENCE only", d["reasons"][0])
+
+    def test_full_path_with_lowered_approval_threshold_in_memory_only(self):
+        cfg = dict(self.cfg, gate_min_oos_trades=30)
         d = gate.evaluate(self.ds, synth.STRATEGY, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
         self.assertEqual(d["status"], "APPROVED", d["reasons"])
-        for k in ("train", "validation", "test", "baseline_test", "test_by_regime", "sensitivity"):
+        for k in ("train", "validation", "test", "baseline_test", "test_by_regime", "test_by_trend",
+                  "test_by_volatility", "sensitivity"):
             self.assertIn(k, d)
+        self.assertTrue(set(d["test_by_trend"]) <= {"trending", "sideways", "unknown"})
+        for v in d["test_by_trend"].values():
+            self.assertIn(v["evidence"], ("INSUFFICIENT EVIDENCE", "INITIAL EVIDENCE", "STRONGER EVIDENCE"))
         self.assertGreater(d["test"]["charges"], 0)
         self.assertIn("not evidence of future profitability", d["disclaimer"])
         self.assertEqual(gate.status_for(self.state, synth.STRATEGY), "REJECTED (synthetic data)")
         self.assertTrue(gate.status_for(self.state, dict(synth.STRATEGY, name="other")).startswith("NOT EVALUATED"))
 
     def test_losing_strategy_rejected(self):
-        d = tempfile.mkdtemp(dir=self.tmp)
-        synth.write_dataset(d, self.days, strikes=4, trend=False, seed=3)
-        cfg = dict(self.cfg, gate_min_examples=50, gate_min_oos_trades=10)
-        doc = gate.evaluate(store.load(d), synth.STRATEGY, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
+        p = os.path.join(tempfile.mkdtemp(dir=self.tmp), "flat")
+        synth.write_dataset(p, self.days, strikes=4, trend=False, seed=3)
+        doc = gate.evaluate(store.load(p), synth.STRATEGY, dict(self.cfg, gate_min_oos_trades=30), self.cm,
+                            self.cal, self.state, allow_synthetic=True)
         self.assertEqual(doc["status"], "REJECTED")
 
     def test_test_period_reuse_rejected(self):
-        cfg = dict(self.cfg, gate_min_examples=50, gate_min_oos_trades=10)
+        cfg = dict(self.cfg, gate_min_oos_trades=30)
         for i in range(4):
             s = dict(synth.STRATEGY, name="v%d" % i)
             d = gate.evaluate(self.ds, s, cfg, self.cm, self.cal, self.state, allow_synthetic=True)
         self.assertEqual(d["status"], "REJECTED")
         self.assertIn("no longer untouched", d["reasons"][0])
+
+
+class Staleness(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.cfg = synth.cfg(self.dir)
+        self.cm = CostModel.load(synth.COSTS)
+
+    def tearDown(self):
+        shutil.rmtree(self.dir)
+
+    def write(self, status, **over):
+        from nse_bot import state
+        doc = dict({"status": status, "synthetic_data": False, "dataset_digest": None},
+                   **gate.fingerprint(self.cfg, self.cm))
+        doc.update(over)
+        state.write_json(os.path.join(self.dir, "gate", "%s.json" % gate.strategy_hash(synth.STRATEGY)), doc)
+
+    def test_same_code_config_costs_keeps_the_status(self):
+        self.write("APPROVED")
+        self.assertEqual(gate.status_for(self.dir, synth.STRATEGY, None, self.cfg, self.cm), "APPROVED")
+
+    def test_other_code_config_or_costs_is_stale(self):
+        self.write("APPROVED", code_version="old")
+        self.assertTrue(gate.status_for(self.dir, synth.STRATEGY, None, self.cfg, self.cm).startswith("STALE"))
+        self.write("APPROVED")
+        cfg = dict(self.cfg, slippage_ticks=1)
+        self.assertIn("config_hash", gate.status_for(self.dir, synth.STRATEGY, None, cfg, self.cm))
+        self.write("REJECTED", costs_hash="old")
+        self.assertEqual(gate.status_for(self.dir, synth.STRATEGY, None, self.cfg, self.cm),
+                         "STALE (costs_hash changed since evaluation; was REJECTED)")
+        self.write("INSUFFICIENT EVIDENCE", code_version="old")
+        self.assertTrue(gate.status_for(self.dir, synth.STRATEGY, None, self.cfg, self.cm).startswith("NOT EVALUATED"))
+
+    def test_paths_and_state_do_not_count_as_config(self):
+        self.write("APPROVED")
+        cfg = dict(self.cfg, state_dir="/elsewhere", forward_validation=True)
+        self.assertEqual(gate.status_for(self.dir, synth.STRATEGY, None, cfg, self.cm), "APPROVED")
 
     def test_neighbours_respect_interval(self):
         for label, s in gate.neighbours(synth.STRATEGY):

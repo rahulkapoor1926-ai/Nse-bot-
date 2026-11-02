@@ -30,11 +30,10 @@
   "slippage_ticks": 2,
   "max_consecutive_errors": 3,
   "event_blackout_minutes": 30,
-  "gate_min_examples": 10000,
   "gate_min_oos_trades": 100,
   "state_dir": "state",
   "holidays_file": "nse_bot/data/nse_holidays.json",
-  "costs_file": "nse_bot/data/costs_india.json",
+  "costs_file": "nse_bot/data/costs_india_fyers.json",
   "events_file": "config/events.example.json",
   "instruments_enabled": [
     "equity",

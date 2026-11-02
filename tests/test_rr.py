@@ -111,7 +111,8 @@ class OrbLive(unittest.TestCase):
     def approve_for(self, strat):
         from nse_bot import gate, state
         state.write_json(os.path.join(self.dir, "gate", "%s.json" % gate.strategy_hash(strat)),
-                         {"status": "APPROVED", "synthetic_data": False, "dataset_digest": None})
+                         dict({"status": "APPROVED", "synthetic_data": False, "dataset_digest": None},
+                              **gate.fingerprint(self.cfg, self.cm)))
 
     def test_gross_1_to_2_is_no_trade(self):
         r = self.run_with(2)

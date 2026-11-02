@@ -29,6 +29,8 @@ def bootstrap_mean_ci(xs, n=2000, seed=7, alpha=0.05):
 
 
 def compute(trades, ci=True):
+    # time order (exit time) for the drawdown and losing streak, whatever order the engines listed them in
+    trades = sorted(trades, key=lambda t: t.get("exit_time") or "")
     nets = [t["net"] for t in trades]
     n = len(nets)
     if n == 0:

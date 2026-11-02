@@ -201,9 +201,9 @@ class Gate(unittest.TestCase):
         self.assertEqual(doc["status"], "REJECTED")
         ds = write_ds(os.path.join(self.dir, "real"), synthetic=False)
         doc = gate.evaluate(ds, S.STRATEGY, self.cfg, self.costs, synth.calendar(), self.cfg["state_dir"])
-        self.assertEqual(doc["status"], "INSUFFICIENT DATA")
-        self.assertIn("10000 required", doc["reasons"][0])
-        self.assertEqual(self.cfg["gate_min_examples"], 10000)
+        self.assertEqual(doc["status"], "INSUFFICIENT EVIDENCE")
+        self.assertIn("at least 30 are needed", doc["reasons"][0])
+        self.assertEqual(self.cfg["gate_min_oos_trades"], 100)
 
     def test_strategy_and_dataset_must_match(self):
         ds = write_ds(os.path.join(self.dir, "real"), synthetic=False)

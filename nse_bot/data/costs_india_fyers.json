@@ -1,0 +1,49 @@
+{
+  "note": "Charges for a FYERS account (the paper bot's data source since 2026-11-02). Percentages are percent of turnover. Read from https://fyers.in/charges-list.md (page generated 2026-10-27) on 2026-11-02. Only the period from 2026-04-01 (Budget 2026 STT rate) is loaded: an earlier trade date is refused, not guessed. FYERS's options brokerage (Rs 20 per executed order) is higher than SAHI's Rs 10, so this file is the more conservative of the two.",
+  "schedules": [
+    {
+      "segment": "index_options",
+      "effective_from": "2026-04-01",
+      "brokerage_per_order_inr": 20,
+      "stt_sell_pct": 0.15,
+      "exchange_txn_pct": 0.0355299,
+      "sebi_pct": 0.0001,
+      "ipft_pct": 1e-07,
+      "stamp_buy_pct": 0.003,
+      "gst_pct": 18,
+      "sources": ["https://fyers.in/charges-list.md (generated 2026-10-27, read 2026-11-02): options brokerage Rs 20 flat per executed order; STT 0.15% on sell value (premium); NSE exchange 0.0355299% on premium; SEBI Rs 10/crore; stamp 0.003% on buy value; GST 18% on brokerage + exchange + SEBI + IPFT; NSE IPFT Rs 0.01/crore"]
+    },
+    {
+      "segment": "equity_intraday",
+      "effective_from": "2026-04-01",
+      "brokerage_per_order_inr": 20,
+      "brokerage_pct": 0.03,
+      "stt_sell_pct": 0.025,
+      "stt_buy_pct": 0,
+      "exchange_txn_pct": 0.0030699,
+      "exchange_sides": "both",
+      "sebi_pct": 0.0001,
+      "ipft_pct": 1e-07,
+      "stamp_buy_pct": 0.003,
+      "gst_pct": 18,
+      "dp_per_sell_inr": 0,
+      "sources": ["https://fyers.in/charges-list.md (generated 2026-10-27, read 2026-11-02): intraday brokerage Rs 20 or 0.03% per executed order whichever is lower; STT 0.025% on sell; NSE 0.0030699%; SEBI Rs 10/crore; stamp 0.003% on buy; GST 18%; IPFT Rs 0.01/crore"]
+    },
+    {
+      "segment": "equity_delivery",
+      "effective_from": "2026-04-01",
+      "brokerage_per_order_inr": 20,
+      "brokerage_pct": 0.3,
+      "stt_sell_pct": 0.1,
+      "stt_buy_pct": 0.1,
+      "exchange_txn_pct": 0.0030699,
+      "exchange_sides": "both",
+      "sebi_pct": 0.0001,
+      "ipft_pct": 1e-07,
+      "stamp_buy_pct": 0.015,
+      "gst_pct": 18,
+      "dp_per_sell_inr": 12.5,
+      "sources": ["https://fyers.in/charges-list.md (generated 2026-10-27, read 2026-11-02): delivery brokerage Rs 20 or 0.3% whichever is lower; STT 0.1% buy and sell; NSE 0.0030699%; stamp 0.015% on buy; DP sell debit Rs 12.5 + GST per scrip"]
+    }
+  ]
+}

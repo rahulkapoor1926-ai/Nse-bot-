@@ -24,7 +24,7 @@ import datetime as dt
 import hashlib
 from collections import Counter
 
-from .. import budget, clock, contract_select, rr, structure as st, sweep
+from .. import budget, clock, contract_select, regime, rr, structure as st, sweep
 from ..errors import CalendarError, DataError
 from .engine import split_days  # noqa: F401  (same chronological split for the gate)
 
@@ -106,7 +106,7 @@ def _simulate(ds, sel, now, plan, u_stop, bias, cfg, costs, day):
                     "entry_time": t_entry.isoformat(), "exit_time": t.isoformat(), "entry": entry, "exit": px,
                     "stop": round(stop, 2), "target": round(target, 2), "qty": qty, "reason": reason,
                     "gross": round((px - entry) * qty, 2), "charges": ch, "net": round((px - entry) * qty - ch, 2),
-                    "exit_delayed_by_missing_data": delayed, "regime": "n/a"}, None
+                    "exit_delayed_by_missing_data": delayed}, None
     return {"unresolved": True, "day": day.isoformat(), "underlying": ds.underlying_name}, None
 
 
@@ -179,6 +179,7 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
             if tr["unresolved"]:
                 unresolved += 1
                 continue
+            tr.update(regime.fields(regime.classify([b for b in ds.u1 if b[0].date() < day], day)))
             trades.append(tr)
             counts["executed"] += 1
             busy_until = dt.datetime.fromisoformat(tr["exit_time"])
