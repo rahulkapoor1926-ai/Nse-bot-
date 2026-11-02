@@ -178,11 +178,12 @@ def context(setup, direction, desk, p=None):
     elif ivp is not None and ivp <= p["vix_low_pct"]:
         sup.append("India VIX in its bottom %d%% of the year: options are cheap" % p["vix_low_pct"])
     spot = desk["spot"]
-    for typ, side in (("CE", "above"), ("PE", "below")):
+    for typ in ("CE", "PE"):
         for c in (desk.get("open_interest", {}).get("concentration") or {}).get(typ, [])[:1]:
             if abs(c["strike"] - spot) / spot * 100 <= p["wall_near_pct"]:
-                notes.append("largest %s OI at %.0f, %s spot within %.1f%% (a level to watch; OI alone is not "
-                             "direction)" % (typ, c["strike"], side, p["wall_near_pct"]))
+                notes.append("largest %s OI at %.0f, %s spot %.0f (within %.1f%%; a level to watch, OI alone is not "
+                             "direction)" % (typ, c["strike"], "above" if c["strike"] > spot else "below"
+                                             if c["strike"] < spot else "at", spot, p["wall_near_pct"]))
     verdict = "SUPPORTIVE" if len(sup) > len(cau) else "CAUTION" if len(cau) > len(sup) else "NEUTRAL"
     return {"verdict": verdict, "supports": sup, "cautions": cau, "notes": notes, "setup": setup,
             "direction": "up" if direction > 0 else "down", "desk": desk,
