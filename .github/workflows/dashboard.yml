@@ -130,6 +130,7 @@ jobs:
           echo "  /login wrong key    -> $(curl -s -o /dev/null -w '%{http_code}' "$URL/login?k=wrong") (must be 401)"
           echo "  /login right key    -> $(curl -s -c jar -o /dev/null -w '%{http_code}' "$URL/login?k=$KEY") (must be 303)"
           curl -s -b jar "$URL/api/overview" | python3 -c "import json,sys; d=json.load(sys.stdin); m=d['market']; r=d['risk']; print('  /api/overview signed in -> mode', d['mode'], '| market available', m.get('available'), '| spot', m.get('spot'), '| risk entries', r.get('entries'), '| ORB bot', (d['books'].get('ORB') or {}).get('bot', {}).get('status'))"
+          export URL END DASH_KEY="$KEY"      # GITHUB_ENV values only reach LATER steps
           python3 - <<'PY'
           import os
           from nse_bot import notify
