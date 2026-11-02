@@ -7,3 +7,4 @@
 {"data": {}, "key": "101000000011536-0950", "kind": "candidate", "message": "REJECTED TCS: signal is more than 2 hours old; quote: timestamp 5s in the future: clock or feed problem", "time": "2026-11-02T12:47:15.610854+05:30"}
 {"data": {}, "key": "101126110353940-0950", "kind": "candidate", "message": "REJECTED NSE:NIFTY26N0323300CE: signal is more than 2 hours old; quote: timestamp 5s in the future: clock or feed problem", "time": "2026-11-02T12:47:15.610854+05:30"}
 {"data": {}, "key": "101126110353932-0950", "kind": "candidate", "message": "REJECTED NSE:NIFTY26N0323250CE: signal is more than 2 hours old; quote: timestamp 29s in the future: clock or feed problem", "time": "2026-11-02T12:55:08.113902+05:30"}
+{"data": {}, "key": "q-10100000001660-1300", "kind": "system_error", "message": "quote fetch failed for ITC: FYERS rate limit hit on /depth: treated as missing data", "time": "2026-11-02T13:00:24.301599+05:30"}

@@ -1,6 +1,6 @@
 {
   "bot": {
-    "heartbeat": "2026-11-02T12:56:54.983594+05:30",
+    "heartbeat": "2026-11-02T13:01:58.995533+05:30",
     "last_error": null,
     "reported_status": "running",
     "stale_after_seconds": 180,
@@ -24,6 +24,15 @@
     {
       "bias": "bullish",
       "decision": "SKIP",
+      "evaluated_at": "2026-11-02T13:00:26.994720+05:30",
+      "skip_reason": "confirmation: no 5m close beyond the sweep bar's high with a 50%+ body within 6 bars",
+      "strategy": "sweep-reversal",
+      "underlying": "NIFTY",
+      "why": null
+    },
+    {
+      "bias": "bullish",
+      "decision": "SKIP",
       "evaluated_at": "2026-11-02T12:47:46.682705+05:30",
       "skip_reason": "structure: no BOS/CHoCH between the sweep and the confirmation",
       "strategy": "sweep-reversal",
@@ -38,7 +47,7 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-11-02T12:56:54.983594+05:30",
+  "generated_at": "2026-11-02T13:01:58.995533+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,

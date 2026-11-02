@@ -1,0 +1,14 @@
+{
+  "consecutive_errors": 0,
+  "date": "2026-11-02",
+  "entries": [],
+  "lockout": {
+    "at": null,
+    "locked": false,
+    "reason": null
+  },
+  "open": [],
+  "realized_pnl": 0.0,
+  "trades": 0,
+  "unrealized_pnl": 0.0
+}
