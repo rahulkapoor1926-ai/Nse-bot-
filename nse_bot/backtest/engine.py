@@ -4,6 +4,8 @@ No look-ahead:
   * a pattern sees only bars that have closed (patterns.detect on bars[:i+1]);
   * entry uses the quote snapshot one full bar AFTER the signal is known
     (entry_delay_bars, minimum 1), at the ASK plus slippage ticks;
+  * size: budget.size_at_fills, exactly as the live bot (loss at the stop fill plus both legs'
+    charges within max_risk_per_trade_inr); a signal that does not fit is a NO TRADE, as live;
   * exits use later bars only, at the BID minus slippage ticks; a bar that
     touches both stop and target counts as the stop;
   * regime labels use the previous session and today's open only.
@@ -22,7 +24,7 @@ import datetime as dt
 import hashlib
 from collections import Counter
 
-from .. import clock, patterns, rr
+from .. import budget, clock, patterns, rr
 from ..errors import CalendarError, DataError
 from ..instruments import Contract
 from ..exit import plan as exit_plan
@@ -115,16 +117,21 @@ def simulate_trade(ds, u, day, sig, typ, strategy, cfg, costs, cal, ubars):
     mid = (eb["bid"] + eb["ask"]) / 2
     if (eb["ask"] - eb["bid"]) / mid * 100 > cfg["max_spread_pct"]:
         return None, "spread too wide at entry", None
-    if eb["ask_qty"] is None or eb["ask_qty"] < eb["lot_size"]:
-        return None, "displayed ask size below one lot", None
     c = _contract(u, key, eb)
     tick = c.tick_size
     slip = cfg["slippage_ticks"] * tick
-    entry = round(eb["ask"] + slip, 2)
+    entry = budget.entry_fill(cfg, c, eb["ask"])
     p = exit_plan(entry, c, strategy, cfg, day)
-    net = rr.net(entry, round(p["stop"] - slip, 2), round(p["target"] - slip, 2), c.lot_size, costs, day, c.cost_segment)
+    # the same sizing as the live bot: loss at the stop fill incl. charges within the per-trade risk
+    sizing = budget.size_at_fills(cfg, costs, c, entry, p["stop"], day, cfg["max_daily_loss_inr"])
+    if sizing.get("lots", 0) < 1:
+        return {"skipped_sizing": "; ".join(sizing.get("reasons") or ["zero lots"])}, None, None
+    qty = sizing["quantity"]
+    net = rr.net(entry, round(p["stop"] - slip, 2), round(p["target"] - slip, 2), qty, costs, day, c.cost_segment)
     if not rr.ok(net, cfg):
         return {"skipped": rr.why(net, cfg)}, None, None
+    if eb["ask_qty"] is None or eb["ask_qty"] < qty:
+        return None, "displayed ask size below the order size", None
     flat = clock.at(day, p["flat_by"])
     ucloses = {b[0]: (i, b[4]) for i, b in enumerate(ubars)}
     later = sorted(t for t in bars if t > entry_bar_start)
@@ -158,8 +165,7 @@ def simulate_trade(ds, u, day, sig, typ, strategy, cfg, costs, cal, ubars):
     if exit_px is None:
         return {"unresolved": True, "day": day.isoformat(), "underlying": u}, None, None
     exit_px = round(max(exit_px, tick), 2)
-    qty = c.lot_size
-    ch = costs.round_trip(entry, exit_px, qty, day)["total"]
+    ch = costs.round_trip(entry, exit_px, qty, day, c.cost_segment)["total"]
     gross = (exit_px - entry) * qty
     if exit_idx is None:
         exit_idx = max((i for i, b in enumerate(ubars) if b[0] < exit_time), default=len(ubars) - 1)
@@ -220,6 +226,10 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
                 if why:
                     invalid[why] += 1
                     break
+                if t.get("skipped_sizing"):
+                    counts["sizing_no_trade"] += 1             # live would refuse it too: not a gate example
+                    start = sig["bar_index"] + 1
+                    continue
                 if t.get("skipped"):
                     counts["net_rr_no_trade"] += 1             # a valid NO TRADE: never counted as a gate example
                     start = sig["bar_index"] + 1

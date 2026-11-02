@@ -23,7 +23,7 @@ INDEX_ROW = "26000,,,Nifty 50,,,NSE,NSE,26000,IDX,,,0.00,0,0.00,0,0,0"
 
 class FakeMD(MarketData):
     def __init__(self):
-        self.bars = bars([25000, 25005, 24995, 25003, 25030, 25040, 25045, 25050])
+        self.bars = bars([25000, 25005, 24995, 25030, 25035, 25040, 25045, 25050])   # breakout known 09:35, entry 09:40-09:45
         self.q = {}
         self.fail = False
 

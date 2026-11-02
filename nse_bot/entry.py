@@ -34,7 +34,17 @@ def candidate(scan_row, quote, now, cfg, cal, event_list=(), received_at=None):
         why.append("after the entry window (%s)" % cfg["no_entries_after"])
     if c.expiry is not None and c.expiry == d and now > clock.at(d, cfg["expiry_day_flat_by"]):
         why.append("expiry day after %s" % cfg["expiry_day_flat_by"])
-    if (now - sig["known_at"]).total_seconds() > 2 * 60 * 60:
+    start, until = scan_row.get("entry_from"), scan_row.get("entry_until")
+    if start is not None and now < start:
+        out["status"] = "WAITING"
+        out["reasons"] = ["waiting for the entry point %s IST (the backtest enters at that same quote snapshot)"
+                          % start.strftime("%H:%M")]
+        return out
+    if until is not None:
+        if now >= until:
+            why.append("signal is past its entry window %s-%s IST (live and backtest enter only there)"
+                       % (start.strftime("%H:%M"), until.strftime("%H:%M")))
+    elif (now - sig["known_at"]).total_seconds() > 2 * 60 * 60:
         why.append("signal is more than 2 hours old")
     blocked = events.blackout(event_list, now, cfg["event_blackout_minutes"])
     if blocked:

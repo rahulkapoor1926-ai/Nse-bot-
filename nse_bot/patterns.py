@@ -18,6 +18,14 @@ PATTERNS = ("orb", "pdh_pdl", "sweep_reversal")      # sweep_reversal lives in s
 INSTRUMENTS = ("index_option", "equity")
 
 
+def entry_window(sig, strategy):
+    """When a signal may be entered, identical live and in the backtest (backtest/engine.py enters at the
+    quote snapshot taken at `start`): from entry_delay_bars bars after the signal is known, for one bar."""
+    minutes = strategy["interval_minutes"]
+    start = sig["known_at"] + dt.timedelta(minutes=minutes * max(1, int(strategy.get("entry_delay_bars", 1))))
+    return start, start + dt.timedelta(minutes=minutes)
+
+
 def closed_bars(bars, now, minutes):
     step = dt.timedelta(minutes=minutes)
     return [b for b in bars if b[0] + step <= now]

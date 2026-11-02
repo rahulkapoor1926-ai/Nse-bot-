@@ -238,7 +238,7 @@ class PaperCycle(unittest.TestCase):
         self.cfg = synth.cfg(self.dir, instruments_enabled=["equity", "etf"])
         self.m = master()
         self.md = MD()
-        self.md.series[12027] = bars([1000, 1000.5, 999.5, 1000.2, 1003])
+        self.md.series[12027] = bars([1000, 1000.5, 999.5, 1003])          # breakout known 09:35, entry 09:40-09:45
         self.cm = CostModel.load(synth.COSTS)
         from nse_bot import state
         state.write_json(os.path.join(self.dir, "gate", "%s.json" % gate.strategy_hash(synth.EQ_STRATEGY)),

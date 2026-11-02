@@ -70,7 +70,7 @@ def trading_days(n, start=dt.date(2026, 1, 2)):
 
 
 def premium(S, K, typ):
-    v = 100.0 + 0.5 * ((S - K) if typ == "CE" else (K - S))
+    v = 24.0 + 0.25 * ((S - K) if typ == "CE" else (K - S))    # cheap enough for 1 lot within Rs 500 risk
     return max(round(v / 0.05) * 0.05, 0.05)
 
 

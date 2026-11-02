@@ -53,6 +53,20 @@ def size(entry_price, stop, contract, cfg, costs, day, remaining_daily_loss, cas
     return out
 
 
+def entry_fill(cfg, c, ask):
+    """The price a paper buy really pays: the ask plus slippage ticks (broker/paper.py fills the same way)."""
+    return round(ask + cfg["slippage_ticks"] * c.tick_size, 2)
+
+
+def size_at_fills(cfg, costs, c, fill, stop, day, remaining_loss):
+    """Position size on the prices a trade would really get: entry at `fill` (ask + slippage, see entry_fill)
+    and a stop exit at the stop (judged on the bid) minus slippage, with both legs' charges. The loss at the
+    stop must fit the per-trade risk (Rs 500) and what is left of the daily limit, else zero lots: never a
+    wider stop or a bigger budget. The live bot and the ORB and equity backtests all call this function."""
+    slip = cfg["slippage_ticks"] * c.tick_size
+    return size(fill, round(stop - slip, 2), c, cfg, costs, day, remaining_loss)
+
+
 def size_shares(entry_price, stop, stock, cfg, costs, day, remaining_daily_loss, cash=None):
     """Whole shares of a stock or ETF, cash only (no intraday leverage is used).
 

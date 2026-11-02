@@ -95,8 +95,11 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
     signal = {"pattern": sweep.PATTERN, "option_type": c.option_type, "known_at": known,
               "trigger_close": rep["underlying_plan"]["spot"], "levels": {"level": rep["liquidity"]["level"]},
               "invalidate_below": u_stop if bullish else None, "invalidate_above": None if bullish else u_stop}
+    # the backtest (backtest/sweep_engine.py) fills at the recorded quote one minute after the signal is
+    # known; live enters in that same minute and not before
     row = {"underlying": u, "strategy": strategy["name"], "status": "SIGNAL", "signal": signal, "contract": c,
-           "spot": signal["trigger_close"]}
+           "spot": signal["trigger_close"], "entry_from": known + dt.timedelta(minutes=1),
+           "entry_until": known + dt.timedelta(minutes=2)}
     ex = rep.setdefault("execution", {})
     try:
         q = ctx.md.quotes([c.instrument_id]).get(c.instrument_id)
@@ -106,6 +109,10 @@ def _execute(ctx, now, strategy, u, rep, chosen, u_stop):
         rep["decision"] = "BLOCKED"
         return []
     cand = entry.candidate(row, q, now, ctx.cfg, ctx.cal, ctx.events)
+    if cand["status"] == "WAITING":
+        ex["entry_check"] = {"status": "WAITING", "reasons": cand["reasons"]}
+        rep["decision"] = "WAIT"
+        return []
     key = "%s-%s" % (c.instrument_id, known.strftime("%H%M"))
     ctx.alerts.emit("candidate", key, "%s %s (sweep_reversal): %s" % (cand["status"], c.symbol, rep["why"]), now)
     ex["entry_check"] = {"status": cand["status"], "reasons": cand["reasons"]}

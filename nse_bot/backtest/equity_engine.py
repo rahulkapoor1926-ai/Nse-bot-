@@ -98,10 +98,10 @@ def simulate_trade(ds, sym, day, sig, strategy, cfg, costs, recs):
     entry = round(ask + slip, 2)
     st = Stock(0, sym, "", "EQ", tick, ds.kinds.get(sym, "equity"))
     p = exit_plan(entry, st, strategy, cfg, day)
-    size = budget.size_shares(entry, p["stop"], st, cfg, costs, day, cfg["max_daily_loss_inr"])
+    size = budget.size_at_fills(cfg, costs, st, entry, p["stop"], day, cfg["max_daily_loss_inr"])
     qty = size["quantity"]
     if qty < 1:
-        return None, "sizing gives zero shares", None
+        return {"skipped_sizing": "; ".join(size.get("reasons") or ["zero shares"])}, None, None
     net = rr.net(entry, round(p["stop"] - slip, 2), round(p["target"] - slip, 2), qty, costs, day, st.cost_segment)
     if not rr.ok(net, cfg):
         return {"skipped": rr.why(net, cfg)}, None, None
@@ -210,6 +210,10 @@ def run(ds, strategy, cfg, costs, cal, days=None, direction=None):
                 if why:
                     invalid[why] += 1
                     break
+                if t.get("skipped_sizing"):
+                    counts["sizing_no_trade"] += 1             # live would refuse it too: not a gate example
+                    start = sig["bar_index"] + 1
+                    continue
                 if t.get("skipped"):
                     counts["net_rr_no_trade"] += 1             # a valid NO TRADE: never counted as a gate example
                     start = sig["bar_index"] + 1

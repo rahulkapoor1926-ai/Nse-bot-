@@ -49,10 +49,12 @@ def scan(underlying_bars, prev_levels, master, cal, now, cfg, strategy):
                 row["reason"] = "no listed %s expiry passes the calendar cross-check" % u
                 continue
             spot = bars[-1][4]
-            c = master.pick(u, expiry, sig["option_type"], spot, strategy["strike_offset"])
+            # strike from the signal bar's close, as in the backtest (backtest/engine.py _pick)
+            c = master.pick(u, expiry, sig["option_type"], sig["trigger_close"], strategy["strike_offset"])
             row["status"] = "SIGNAL"
             row["contract"] = c
             row["spot"] = spot
+            row["entry_from"], row["entry_until"] = patterns.entry_window(sig, strategy)
         except (DataError, CalendarError) as e:
             row["status"] = "ERROR"
             row["reason"] = str(e)
@@ -86,6 +88,7 @@ def scan_equities(bars_by_symbol, prev_levels, master, now, cfg, strategy):
                 row.update(status="SHORT_IGNORED", reason="downside signal; short selling is not enabled")
                 continue
             row.update(status="SIGNAL", contract=st, spot=bars[-1][4])
+            row["entry_from"], row["entry_until"] = patterns.entry_window(sig, strategy)
         except (DataError, CalendarError) as e:
             row.update(status="ERROR", reason=str(e))
     return rows

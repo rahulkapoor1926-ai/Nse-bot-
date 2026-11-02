@@ -25,6 +25,7 @@ class FakeMD(MarketData):
     def __init__(self, data, chain=None):
         self.d, self.chain = data, chain or S.chain_doc()
         self.calls = []
+        self.at = S.NOW                                   # quote time: the cycle's time (a live, fresh quote)
 
     def candles(self, iid, size, start, end):
         self.calls.append((iid, size))
@@ -36,13 +37,16 @@ class FakeMD(MarketData):
         return [tuple(b[:5]) + (b[5] if len(b) > 5 else None, None) for b in src if start <= b[0] <= end]
 
     def quotes(self, ids):
-        return {i: quote(bid=150.0, ask=150.1, at=S.NOW, iid=i, qty=1300) for i in ids}
+        return {i: quote(bid=150.0, ask=150.1, at=self.at, iid=i, qty=1300) for i in ids}
 
     def expiries(self, u):
         return []
 
     def option_chain(self, u, e):
         return self.chain
+
+
+ENTRY = S.NOW + dt.timedelta(minutes=1)          # one minute after the signal minute, as the backtest fills
 
 
 class Paper(unittest.TestCase):
@@ -60,6 +64,7 @@ class Paper(unittest.TestCase):
         shutil.rmtree(self.dir)
 
     def cycle(self, now=S.NOW):
+        self.md.at = now
         ctx = bot.Context(self.cfg, synth.calendar(), self.master, self.md, self.cm, self.broker,
                           risk.RiskBook.open(self.dir, now.date()), Alerts(self.dir, now.date(), sink=lambda a: None),
                           [S.STRATEGY])
@@ -72,8 +77,14 @@ class Paper(unittest.TestCase):
         f = self.master.current_future("NIFTY", S.DAY)
         self.assertEqual(f.symbol, "NIFTY24NOV26FUT")
 
+    def test_setup_waits_for_the_backtest_entry_minute(self):
+        self.cycle()                                      # the signal minute itself: the backtest fills a minute later
+        [rep] = self.reports()
+        self.assertEqual(rep["decision"], "WAIT")
+        self.assertIn("waiting for the entry point", rep["execution"]["entry_check"]["reasons"][0])
+
     def test_setup_without_gate_approval_is_blocked_and_reported(self):
-        self.cycle()
+        self.cycle(ENTRY)
         [rep] = self.reports()
         self.assertEqual(rep["decision"], "BLOCKED")
         self.assertEqual(rep["evidence_check"], "ok")
@@ -85,7 +96,7 @@ class Paper(unittest.TestCase):
     def test_approved_but_too_risky_for_rs_500_is_still_blocked(self):
         state.write_json(os.path.join(self.dir, "gate", "%s.json" % gate.strategy_hash(S.STRATEGY)),
                          {"status": "APPROVED", "synthetic_data": False, "dataset_digest": None})
-        self.cycle()
+        self.cycle(ENTRY)
         [rep] = self.reports()
         self.assertEqual(rep["decision"], "BLOCKED")
         self.assertEqual(rep["execution"]["sizing"]["lots"], 0)

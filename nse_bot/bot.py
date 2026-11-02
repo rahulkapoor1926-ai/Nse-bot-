@@ -135,12 +135,12 @@ def manage_positions(ctx, now, ulast):
     return events
 
 
-def _net_rr(ctx, c, ask, stop, target, sizing, now):
-    """Net 1:2 check input (rr.py): fills at ask+slippage and bid-slippage, all charges."""
+def _net_rr(ctx, c, fill, stop, target, sizing, now):
+    """Net 1:2 check input (rr.py): entry at the fill (ask + slippage), exits at bid - slippage, all charges."""
     slip = ctx.cfg["slippage_ticks"] * c.tick_size
     qty = (sizing or {}).get("quantity") or c.lot_size           # zero lots is blocked anyway; measure one lot
     try:
-        return rr.net(round(ask + slip, 2), round(stop - slip, 2), round(target - slip, 2), qty, ctx.costs,
+        return rr.net(fill, round(stop - slip, 2), round(target - slip, 2), qty, ctx.costs,
                       now.date(), c.cost_segment)
     except Exception as e:                      # noqa: BLE001  (no number means NO TRADE)
         return {"net_reward_risk": 0.0, "reason": str(e)}
@@ -179,6 +179,8 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
                             "quote fetch failed for %s: %s" % (c.symbol, e), now)
             continue
         cand = entry.candidate(row, q, now, ctx.cfg, ctx.cal, ctx.events)
+        if cand["status"] == "WAITING":
+            continue                            # not yet at the entry point; nothing to log or alert
         key = "%s-%s" % (c.instrument_id, row["signal"]["known_at"].strftime("%H%M"))
         ctx.alerts.emit("candidate", key, "%s %s: %s" % (cand["status"], c.symbol, "; ".join(
             cand.get("reasons_for") or cand["reasons"])), now)
@@ -186,10 +188,12 @@ def look_for_entry(ctx, now, ubars, prev=None, strategy=None):
             forward.orb_signal(ctx, now, strategy, cand, row)
             out.append(cand)
             continue
-        plan = exit_mod.plan(cand["entry_price"], c, strategy, ctx.cfg, now.date())
-        sizing = budget.size(cand["entry_price"], plan["stop"], c, ctx.cfg, ctx.costs, now.date(),
-                             ctx.risk.remaining_loss(ctx.cfg))
-        plan["net"] = _net_rr(ctx, c, cand["entry_price"], plan["stop"], plan["target"], sizing, now)
+        # stop (20% cap) and target are planned on the real fill (ask + slippage), as in the backtest
+        fill = budget.entry_fill(ctx.cfg, c, cand["entry_price"])
+        plan = exit_mod.plan(fill, c, strategy, ctx.cfg, now.date())
+        sizing = budget.size_at_fills(ctx.cfg, ctx.costs, c, fill, plan["stop"], now.date(),
+                                      ctx.risk.remaining_loss(ctx.cfg))
+        plan["net"] = _net_rr(ctx, c, fill, plan["stop"], plan["target"], sizing, now)
         order = {"instrument_id": c.instrument_id, "strategy": strategy["name"],
                  "signal_known_at": row["signal"]["known_at"].isoformat(), "side": "BUY"}
         qp = quotes.check_for(c, q, now, ctx.cfg) + feedcheck.entry_problems(
