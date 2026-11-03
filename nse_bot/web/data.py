@@ -4,14 +4,16 @@
   <root>/sweep/                   standard Sweep book
   <root>/forward/orb, /sweep      forward-validation books
   <root>/shared-risk, /forward/shared-risk   the ONE shared risk book per mode (risk.py)
-  <root>/eod/latest.json          daily end-of-day report
-  <recordings>/<day>/fyers_options_1m.csv    live FYERS snapshots (data/fyers_recorder.py)
+  <root>/eod/latest.json          NSE end-of-day report (public files, previous session; NEVER live)
+  <recordings>/<day>/fyers_options_1m.csv    FYERS 1-minute REST snapshots (data/fyers_recorder.py)
+  <live_feed>/<day>/live_quotes.json         FYERS WebSocket ticks (live_feed.py), display only
 
 Nothing here trades, sizes, prices or decides; the trading rules live only in the bot. A file that
 is missing gives an empty section, a broken one gives an error message: never a made-up number.
 """
 
 import csv
+import datetime as dt
 import glob
 import json
 import os
@@ -24,6 +26,9 @@ MODES = {
     "forward": {"ORB": "forward/orb", "Sweep": "forward/sweep", "risk": "forward/shared-risk"},
 }
 RECORD_FILE = "fyers_options_1m.csv"
+SPOT_SYMBOL = "NSE:NIFTY50-INDEX"
+STALE_SECONDS = 15        # a WebSocket quote older than this is flagged STALE (never shown as fresh)
+REST_STALE_SECONDS = 90   # the REST snapshot is taken once a minute: older than this is STALE
 LIMITS_KEYS = ("capital_inr", "max_risk_per_trade_inr", "max_trades_per_day", "max_stop_exits_per_day",
                "max_daily_loss_inr", "daily_profit_stop_inr", "max_open_lots", "live_orders_enabled")
 
@@ -55,9 +60,10 @@ def _jsonl_tail(path, n):
 
 
 class View(object):
-    def __init__(self, root, cfg, recordings=None, control_path=None, now=clock.now_ist, study_path=None):
+    def __init__(self, root, cfg, recordings=None, control_path=None, now=clock.now_ist, study_path=None,
+                 live_feed=None):
         self.root, self.cfg, self.recordings, self.control_path, self.now = root, cfg, recordings, control_path, now
-        self.study_path = study_path
+        self.study_path, self.live_feed = study_path, live_feed
 
     def _dir(self, rel):
         return os.path.join(self.root, rel) if rel else self.root
@@ -170,37 +176,104 @@ class View(object):
         if days:
             with open(os.path.join(self.root, "eod", days[-1] + ".md"), encoding="utf-8") as f:
                 md = f.read()[:20000]
-        return {"latest": eod, "days": days, "latest_markdown": md}
+        return {"feed": "NSE END-OF-DAY", "live": False, "session_date": days[-1] if days else None,
+                "label": "NSE public end-of-day files (daily OHLC, OI, settlement) for a CLOSED session. NOT LIVE, "
+                         "not FYERS, and never used for fills, P&L or signals.",
+                "latest": eod, "days": days, "latest_markdown": md}
+
+    def _live_quotes(self):
+        """FYERS WebSocket ticks written by live_feed.py, or None."""
+        if not self.live_feed:
+            return None
+        return _read(os.path.join(self.live_feed, self.now().date().isoformat(), "live_quotes.json"))
+
+    def _quote_time(self, q):
+        t = q.get("exch_feed_time") or q.get("last_traded_time")
+        if not t:
+            return None, None
+        when = clock.from_epoch_ms(float(t) * 1000.0)
+        return when.isoformat(timespec="seconds"), round((self.now() - when).total_seconds(), 1)
 
     def market(self):
-        """Latest minute of the live FYERS recorder: NIFTY spot, ATM + 2 ITM CE/PE, with status flags."""
-        if not self.recordings:
-            return {"available": False, "reason": "no live recorder in this deployment"}
-        day = self.now().date().isoformat()
-        path = os.path.join(self.recordings, day, RECORD_FILE)
-        if not os.path.exists(path):
-            return {"available": False, "reason": "no FYERS snapshot recorded today yet"}
-        with open(path, newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-        if not rows:
-            return {"available": False, "reason": "recording file is empty"}
-        last = rows[-1]["ts"]
-        snap = [r for r in rows if r["ts"] == last]
-        summ = _read(os.path.join(self.recordings, day, "summary.json"), {}) or {}
+        """FYERS LIVE feed only: NIFTY spot and ATM/ITM CE/PE. Each quote carries its own exchange time,
+        age and a STALE flag. WebSocket ticks are used where present; otherwise the 1-minute REST snapshot
+        of the recorder. NSE end-of-day files are never used here (see reports())."""
+        live = self._live_quotes() or {}
+        lq = live.get("quotes") or {}
+        rows, last = [], None
+        if self.recordings:
+            path = os.path.join(self.recordings, self.now().date().isoformat(), RECORD_FILE)
+            if os.path.exists(path):
+                with open(path, newline="", encoding="utf-8") as f:
+                    rows = list(csv.DictReader(f))
+        if rows:
+            last = rows[-1]["ts"]
+        if not rows and not lq:
+            return {"available": False, "feed": "FYERS LIVE",
+                    "reason": "no FYERS quote received today yet" if self.recordings or self.live_feed
+                    else "no live FYERS feed in this deployment"}
+        snap = [r for r in rows if r["ts"] == last] if last else []
+        summ = (_read(os.path.join(self.recordings, self.now().date().isoformat(), "summary.json"), {}) or {}) \
+            if self.recordings else {}
 
         def num(v):
             return None if v in (None, "") else float(v)
+
+        def rest_age(ts):
+            try:
+                return round((self.now() - dt.datetime.fromisoformat(ts)).total_seconds(), 1)
+            except (TypeError, ValueError):
+                return None
+
+        def flag(age, status="OK", limit=STALE_SECONDS):
+            if age is None:
+                return "MISSING"
+            if age > limit:
+                return "STALE"
+            return status
+
         idx = next((r for r in snap if r["kind"] == "index"), None)
-        opts = [{"symbol": r["symbol"], "type": r["option_type"], "moneyness": r["moneyness"],
-                 "strike": num(r["strike"]), "expiry": r["expiry"], "bid": num(r["bid"]), "ask": num(r["ask"]),
-                 "ltp": num(r["ltp"]), "volume": num(r["volume"]), "oi": num(r["oi"]), "status": r["status"],
-                 "note": r["note"]} for r in snap if r["kind"] == "option"]
+        ws_spot = lq.get(SPOT_SYMBOL)
+        if ws_spot and ws_spot.get("ltp") is not None:
+            t, age = self._quote_time(ws_spot)
+            spot = {"spot": ws_spot["ltp"], "spot_time": t, "spot_age_s": age, "spot_source": "WebSocket",
+                    "spot_status": flag(age)}
+        elif idx:
+            age = rest_age(last)
+            spot = {"spot": num(idx["ltp"]), "spot_time": last, "spot_age_s": age, "spot_source": "REST 1-minute",
+                    "spot_status": flag(age, limit=REST_STALE_SECONDS) if idx["status"] == "OK" else idx["status"]}
+        else:
+            spot = {"spot": None, "spot_time": None, "spot_age_s": None, "spot_source": None, "spot_status": "MISSING"}
+        opts = []
+        for r in (x for x in snap if x["kind"] == "option"):
+            o = {"symbol": r["symbol"], "type": r["option_type"], "moneyness": r["moneyness"],
+                 "strike": num(r["strike"]), "expiry": r["expiry"], "note": r["note"]}
+            q = lq.get(r["symbol"])
+            if q and (q.get("ltp") is not None or q.get("bid_price") is not None):
+                t, age = self._quote_time(q)
+                o.update(bid=q.get("bid_price"), ask=q.get("ask_price"), ltp=q.get("ltp"),
+                         volume=q.get("vol_traded_today"), oi=q.get("OI"), quote_time=t, age_s=age,
+                         source="WebSocket", status=flag(age))
+            else:
+                age = rest_age(last)
+                o.update(bid=num(r["bid"]), ask=num(r["ask"]), ltp=num(r["ltp"]), volume=num(r["volume"]),
+                         oi=num(r["oi"]), quote_time=last, age_s=age, source="REST 1-minute",
+                         status=flag(age, limit=REST_STALE_SECONDS) if r["status"] == "OK" else r["status"])
+            opts.append(o)
         spot_hist = [{"ts": r["ts"], "spot": num(r["ltp"])} for r in rows if r["kind"] == "index" and r["ltp"]][-120:]
-        return {"available": True, "snapshot_time": last, "received_at": (idx or snap[0]).get("received_at"),
-                "spot": num(idx["ltp"]) if idx else None, "spot_status": idx["status"] if idx else "MISSING",
-                "atm_strike": num(snap[-1].get("atm_strike")), "options": opts, "spot_history": spot_hist,
-                "api_calls_today": summ.get("api_calls_this_process"), "status_counts": summ.get("status_counts"),
-                "source": "FYERS /options-chain-v3 (read-only)"}
+        written = live.get("written_at")
+        feed_age = rest_age(written) if written else None
+        ws = {"running": bool(live), "connected": bool(live.get("connected")), "written_at": written,
+              "file_age_s": feed_age, "ticks_received": live.get("ticks_received"),
+              "subscribed": len(live.get("subscribed") or []),
+              "last_event": (live.get("events") or [None])[-1]} if live else {"running": False}
+        return dict(spot, available=True, feed="FYERS LIVE", snapshot_time=last,
+                    atm_strike=num(snap[-1].get("atm_strike")) if snap else None, options=opts,
+                    spot_history=spot_hist, websocket=ws, stale_after_s=STALE_SECONDS,
+                    rest_stale_after_s=REST_STALE_SECONDS,
+                    api_calls_today=summ.get("api_calls_this_process"), status_counts=summ.get("status_counts"),
+                    source="FYERS WebSocket ticks where marked, else FYERS /options-chain-v3 1-minute snapshot "
+                           "(read-only)")
 
     # -- historical signal study (backtest/signal_study.py; no fills, no P&L) ------------
 

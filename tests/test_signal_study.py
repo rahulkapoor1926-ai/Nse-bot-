@@ -88,14 +88,18 @@ class IndexOutcomes(unittest.TestCase):
                 "invalidate_below": 25000.0 if typ == "CE" else None,
                 "invalidate_above": 25000.0 if typ == "PE" else None}
 
-    def bars(self, path):
+    def bars(self, path, full=True):
+        """1m bars from 09:50; with full=True the session continues flat at the last close until 15:14."""
         d, out = DAYS[1], []
         for i, (o, h, l, c) in enumerate(path):
             out.append((clock.at(d, "09:50") + dt.timedelta(minutes=i), o, h, l, c, 0))
+        while full and out[-1][0] < clock.at(d, "15:14"):
+            c = out[-1][4]
+            out.append((out[-1][0] + dt.timedelta(minutes=1), c, c, c, c, 0))
         return out
 
-    def run_(self, path, typ="CE"):
-        return SS.index_outcomes(self.bars(path), [self.sig(typ)], ORB, synth.cfg("/tmp/x"), CAL)[0]
+    def run_(self, path, typ="CE", full=True):
+        return SS.index_outcomes(self.bars(path, full), [self.sig(typ)], ORB, synth.cfg("/tmp/x"), CAL)[0]
 
     def test_target_sl_ambiguous_time_exit(self):
         r = self.run_([(25040, 25041, 25039, 25040), (25040, 25141, 25039, 25140)])   # risk 40 -> target 25140
@@ -116,9 +120,22 @@ class IndexOutcomes(unittest.TestCase):
     def test_bars_after_the_time_exit_are_ignored(self):
         flat = clock.at(DAYS[1], "15:15")
         b = self.bars([(25040, 25041, 25039, 25040)])
+        self.assertEqual(b[-1][0], clock.at(DAYS[1], "15:14"))
         b.append((flat, 25040, 25200, 25039, 25200, 0))                       # the 15:15 bar is after flat_by
         r = SS.index_outcomes(b, [self.sig()], ORB, synth.cfg("/tmp/x"), CAL)[0]
         self.assertEqual(r["outcome"], "TIME EXIT")
+
+    def test_session_still_running_is_incomplete_not_a_time_exit(self):
+        # data that stops at 11:40 (study run during the session) must not be marked to the last bar
+        r = self.run_([(25040, 25050, 25030, 25045)] * 3, full=False)
+        self.assertEqual((r["outcome"], r.get("r_multiple")), ("INCOMPLETE", None))
+        self.assertIn("before the 15:15 time exit", r["reason"])
+        # a stop or target already hit before the data ends is a known outcome
+        r = self.run_([(25040, 25041, 24999, 25000)], full=False)
+        self.assertEqual(r["outcome"], "SL")
+        m = SS.index_model([dict(r, entry_time="2026-01-02T09:50"), {"day": "2026-01-03", "outcome": "INCOMPLETE"}],
+                           synth.cfg("/tmp/x"))
+        self.assertEqual((m["trades_counted"], m["excluded"]["INCOMPLETE"]), (1, 1))
 
     def test_summary_counts_and_label(self):
         rows = [{"day": "2026-10-29", "outcome": "TARGET", "index_points": 100.0},

@@ -28,6 +28,8 @@
 
 <main>
   <section id="tab-market" class="tab active">
+    <h2 class="sec">FYERS LIVE feed</h2>
+    <div class="muted small" id="feed-status"></div>
     <div class="card spot">
       <div class="row between">
         <div><div class="label">NIFTY 50 spot</div><div class="big" id="spot">—</div></div>
@@ -60,7 +62,7 @@
     <h2>ORB vs Sweep</h2><div id="perf" class="grid2"></div>
     <div id="sample" class="muted small"></div>
     <h2>Daily risk (both strategies combined)</h2><div id="risk" class="list"></div>
-    <h2>Daily report</h2><div id="report" class="card mono small"></div>
+    <div class="muted small">Paper P&amp;L comes only from the bots' own fills and FYERS quotes. NSE end-of-day files are in the Backtest tab, section F.</div>
   </section>
 
   <section id="tab-study" class="tab">
@@ -102,6 +104,10 @@
     <div id="sweep-rules" class="card small"></div>
     <div id="sweep-days" class="list small"></div>
     <div id="study-cov" class="card mono small"></div>
+    <h2 class="sec">F · NSE end-of-day report (historical, NOT LIVE)</h2>
+    <div class="row"><span class="pill warn">NSE EOD · NOT LIVE</span> <span class="muted small" id="report-date"></span></div>
+    <div class="muted small" id="report-label"></div>
+    <div id="report" class="card mono small"></div>
   </section>
 
   <section id="tab-control" class="tab">

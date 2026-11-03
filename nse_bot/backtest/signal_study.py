@@ -310,6 +310,12 @@ def index_outcomes(u1, signals, strategy, cfg, cal):
                 break
         if res is None:
             last = after[-1]
+            if last[0] + dt.timedelta(minutes=1) < flat - dt.timedelta(minutes=5):
+                # the data stops well before the time exit (e.g. the study ran during today's session):
+                # the trade has no known outcome yet, so it is not counted, never marked to the last bar
+                out.append(dict(row, outcome="INCOMPLETE", reason="1-minute data ends at %s, before the %s time exit"
+                                % ((last[0] + dt.timedelta(minutes=1)).strftime("%H:%M"), flat.strftime("%H:%M"))))
+                continue
             res = ("TIME EXIT", last[0] + dt.timedelta(minutes=1), last[4], "flat at %s" % flat.strftime("%H:%M"))
         kind, when, price, why = res
         row.update(outcome=kind, exit_time=when.isoformat(), exit=None if price is None else round(price, 2),
@@ -324,7 +330,7 @@ def index_outcomes(u1, signals, strategy, cfg, cal):
 
 
 def summarise_outcomes(rows):
-    kinds = ("TARGET", "SL", "TIME EXIT", "AMBIGUOUS", "INVALID", "NO DATA")
+    kinds = ("TARGET", "SL", "TIME EXIT", "AMBIGUOUS", "INVALID", "NO DATA", "INCOMPLETE")
     tot = {k: sum(1 for r in rows if r["outcome"] == k) for k in kinds}
     by_month = collections.OrderedDict()
     for r in sorted(rows, key=lambda x: x["day"]):
@@ -343,7 +349,7 @@ def summarise_outcomes(rows):
 def index_model(rows, cfg, risk_inr=None, label="INDEX-BASED MODEL"):
     """Performance of the INDEX-BASED model in R (1R = the index distance to the stop) and, ONLY as a
     labelled hypothetical, in rupees with 1R = max_risk_per_trade_inr, before charges and slippage.
-    AMBIGUOUS, INVALID and NO DATA outcomes are excluded (counted separately), never guessed.
+    AMBIGUOUS, INVALID, NO DATA and INCOMPLETE outcomes are excluded (counted separately), never guessed.
     Every figure is derived from the per-trade R list in chronological order (entry time)."""
     risk_inr = float(cfg["max_risk_per_trade_inr"] if risk_inr is None else risk_inr)
     cap = float(cfg["capital_inr"])
@@ -392,7 +398,7 @@ def index_model(rows, cfg, risk_inr=None, label="INDEX-BASED MODEL"):
         "breakdown": {"target": group("TARGET"), "stop_loss": group("SL"),
                       "time_exit_profit": group("TIME EXIT", "profit"), "time_exit_loss": group("TIME EXIT", "loss"),
                       "time_exit_breakeven": group("TIME EXIT", "breakeven")},
-        "excluded": {k: sum(1 for r in rows if r["outcome"] == k) for k in ("AMBIGUOUS", "INVALID", "NO DATA")},
+        "excluded": {k: sum(1 for r in rows if r["outcome"] == k) for k in ("AMBIGUOUS", "INVALID", "NO DATA", "INCOMPLETE")},
         "gross_gain_r": round(gross_win, 2), "gross_loss_r": round(gross_loss, 2), "net_r": round(net, 2),
         "expectancy_r": round(net / n, 4) if n else None,
         "profit_factor": round(gross_win / gross_loss, 3) if gross_loss else None,

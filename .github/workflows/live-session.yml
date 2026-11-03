@@ -152,12 +152,20 @@ jobs:
           nohup python3 -m nse_bot --config config/paper.json fyers-record --master state/instruments-fyers.csv \
             --out state/fyers-recordings --until "$(python3 -c "import sys; h,m=map(int,sys.argv[1].split(':')); print('%02d:%02d' % min((h,m),(15,31)))" "$UNTIL")" \
             --max-calls-per-minute 4 --max-calls-per-second 2 --max-calls-per-day 450 > recorder.log 2>&1 &
+          # FYERS WebSocket quotes for the dashboard only (official SDK in its own venv; the bots never read it)
+          REC_UNTIL="$(python3 -c "import sys; h,m=map(int,sys.argv[1].split(':')); print('%02d:%02d' % min((h,m),(15,31)))" "$UNTIL")"
+          if python3 -m venv .feedenv && .feedenv/bin/pip install -q fyers-apiv3==3.2.1; then
+            PYTHONPATH="$PWD" nohup .feedenv/bin/python -m nse_bot.live_feed --recordings state/fyers-recordings \
+              --out feed --until "$REC_UNTIL" > feed.log 2>&1 &
+          else
+            echo "::warning title=FYERS WebSocket::SDK install failed; the dashboard shows the 1-minute REST snapshot"
+          fi
           KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
           echo "::add-mask::$KEY"
           echo "DASH_KEY=$KEY" >> "$GITHUB_ENV"
           END="$UNTIL"; echo "END=$END" >> "$GITHUB_ENV"
           # no GITHUB_TOKEN for Flask: "Start" is off here (the bots already run in this job)
-          env -u GITHUB_TOKEN DASH_KEY="$KEY" DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings \
+          env -u GITHUB_TOKEN DASH_KEY="$KEY" DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_LIVE_FEED=feed \
             DASH_STUDY=state/signal-study/study.json DASH_CONFIG=config/paper.json DASH_HOST=127.0.0.1 DASH_PORT=8080 \
             nohup python3 -m nse_bot.web.app > flask.log 2>&1 &
           curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/download/2024.12.2/cloudflared-linux-amd64 \
@@ -192,7 +200,10 @@ jobs:
           # Status file on the bot-control branch: address + checks, so the run can be verified while it is
           # up. Never the sign-in key (that goes to Telegram only).
           STUDY=$(curl -s -b jar "$URL/api/study" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({'available': d.get('available'), 'generated': d.get('generated'), 'coverage': d.get('coverage'), 'ORB_signals': ((d.get('ORB') or {}).get('summary') or {}).get('signals'), 'Sweep_signals': ((d.get('Sweep') or {}).get('summary') or {}).get('signals'), 'options_pnl': (d.get('options_pnl') or {}).get('status')}))")
-          URL="$URL" END="$END" CHECKS="$CHECKS" STUDY="$STUDY" RUN="$GITHUB_RUN_ID" python3 -c "import json,os,datetime; json.dump({'url': os.environ['URL'], 'up_until_ist': os.environ['END'], 'run_id': os.environ['RUN'], 'started_at': datetime.datetime.now().isoformat(timespec='seconds'), 'signed_in_checks': dict(x.split('=',1) for x in os.environ['CHECKS'].split()), 'study': json.loads(os.environ['STUDY']), 'sign_in_key': 'sent to Telegram only'}, open('ctl/dashboard.json','w'), indent=1)"
+          sleep 20
+          FEED=$(curl -s -b jar "$URL/api/market" | python3 scripts/feed_status.py)
+          echo "::notice title=FYERS live feed::$(echo "$FEED" | python3 -c "import json,sys; d=json.load(sys.stdin); print({k: d[k] for k in ('websocket','spot','spot_source','spot_age_s','spot_status','options_by_source','options_by_status')})")"
+          URL="$URL" END="$END" CHECKS="$CHECKS" STUDY="$STUDY" FEED="$FEED" RUN="$GITHUB_RUN_ID" python3 -c "import json,os,datetime; json.dump({'url': os.environ['URL'], 'up_until_ist': os.environ['END'], 'run_id': os.environ['RUN'], 'started_at': datetime.datetime.now().isoformat(timespec='seconds'), 'signed_in_checks': dict(x.split('=',1) for x in os.environ['CHECKS'].split()), 'study': json.loads(os.environ['STUDY']), 'live_feed': json.loads(os.environ['FEED']), 'sign_in_key': 'sent to Telegram only'}, open('ctl/dashboard.json','w'), indent=1)"
           git -C ctl add dashboard.json && git -C ctl commit -q -m "dashboard up $END IST" && \
             { for i in 1 2 3; do git -C ctl push -q origin HEAD:bot-control && break; git -C ctl pull -q --rebase origin bot-control; done; } || echo "status file not published"
           export URL END DASH_KEY="$KEY"      # GITHUB_ENV values only reach LATER steps
@@ -216,8 +227,13 @@ jobs:
           n=0
           while kill -0 "$(cat orb.pid)" 2>/dev/null || kill -0 "$(cat sweep.pid)" 2>/dev/null; do
             sleep 30; n=$((n+1))
-            pgrep -f "nse_bot.web.app" > /dev/null || { echo "dashboard restarted"; DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_STUDY=state/signal-study/study.json DASH_CONFIG=config/paper.json nohup python3 -m nse_bot.web.app >> flask.log 2>&1 & }
+            pgrep -f "nse_bot.web.app" > /dev/null || { echo "dashboard restarted"; DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_LIVE_FEED=feed DASH_STUDY=state/signal-study/study.json DASH_CONFIG=config/paper.json nohup python3 -m nse_bot.web.app >> flask.log 2>&1 & }
             [ $((n % 10)) -eq 0 ] && { scripts/save_state.sh || true; }
+            # live feed status into the status file a few times (job logs are unreadable while running)
+            case $n in 4|20|60|240) curl -s -b jar "$URL/api/market" | python3 scripts/feed_status.py > feed-status.json && \
+              python3 -c "import json,datetime; d=json.load(open('ctl/dashboard.json')); d['live_feed']=json.load(open('feed-status.json')); d['live_feed_checked_at']=datetime.datetime.now().isoformat(timespec='seconds'); json.dump(d, open('ctl/dashboard.json','w'), indent=1)" && \
+              git -C ctl add dashboard.json && git -C ctl commit -q -m "live feed status" && \
+              { git -C ctl pull -q --rebase origin bot-control; git -C ctl push -q origin HEAD:bot-control; } || true ;; esac
           done
           echo "--- ORB bot (tail) ---"; tail -n 15 orb.log
           echo "--- Sweep bot (tail) ---"; tail -n 15 sweep.log

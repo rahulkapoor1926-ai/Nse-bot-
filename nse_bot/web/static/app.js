@@ -68,8 +68,12 @@ function renderMarket(m) {
   }
   $("spot").textContent = num(m.spot);
   var st = $("spot-status"); st.className = "pill " + statusKind(m.spot_status); st.textContent = m.spot_status;
-  $("spot-time").textContent = "snapshot " + hhmm(m.snapshot_time);
-  $("market-note").textContent = m.source + " · ATM " + num(m.atm_strike, 0) + " · API calls today " + num(m.api_calls_today, 0);
+  $("spot-time").textContent = (m.spot_source || "") + " · quote " + hhmm(m.spot_time) + (m.spot_age_s === null || m.spot_age_s === undefined ? "" : " · " + Math.round(m.spot_age_s) + " s old");
+  $("market-note").textContent = "ATM " + num(m.atm_strike, 0) + " · REST snapshot " + hhmm(m.snapshot_time) + " · REST calls today " + num(m.api_calls_today, 0) + " · STALE after " + m.stale_after_s + " s (WebSocket) / " + m.rest_stale_after_s + " s (REST)";
+  var ws = m.websocket || {};
+  $("feed-status").textContent = ws.running
+    ? "WebSocket " + (ws.connected ? "connected" : "NOT connected") + " · " + (ws.subscribed || 0) + " symbols · " + (ws.ticks_received || 0) + " ticks · feed file " + (ws.file_age_s === null ? "—" : Math.round(ws.file_age_s) + " s old") + (ws.last_event && ws.last_event.kind === "error" ? " · last error " + JSON.stringify(ws.last_event.detail) : "")
+    : "WebSocket not running: quotes are the 1-minute FYERS REST snapshot";
   var o = clear($("opts"));
   (m.options || []).forEach(function (x) {
     var c = el("div", "opt " + (x.type === "CE" ? "ce" : "pe"));
@@ -81,6 +85,7 @@ function renderMarket(m) {
     var ba = el("div", "ba"); ba.appendChild(el("span", "", "bid " + num(x.bid))); ba.appendChild(el("span", "", "ask " + num(x.ask)));
     c.appendChild(ba);
     c.appendChild(el("div", "small muted", "vol " + num(x.volume, 0) + " · OI " + num(x.oi, 0)));
+    c.appendChild(el("div", "small muted", (x.source || "") + " · " + hhmm(x.quote_time) + (x.age_s === null || x.age_s === undefined ? "" : " · " + Math.round(x.age_s) + " s old")));
     c.appendChild(pill(x.status, statusKind(x.status)));
     o.appendChild(c);
   });
@@ -100,7 +105,7 @@ function renderOverview(j) {
   var running = orb.status === "Running" || sw.status === "Running";
   var err = orb.status === "Error" || sw.status === "Error";
   dot.className = "dot " + (err ? "bad" : running ? "ok" : "idle");
-  var m = j.market || {}, age = ageSec(m.snapshot_time), fy = (h.fyers || {}).connected && age !== null && age <= 120;
+  var m = j.market || {}, age = m.spot_age_s === undefined || m.spot_age_s === null ? ageSec(m.snapshot_time) : Math.round(m.spot_age_s), fy = (h.fyers || {}).connected && age !== null && m.spot_status !== "STALE" && m.spot_status !== "MISSING";
   $("hb-text").textContent = "ORB " + (orb.status || "no data") + " · Sweep " + (sw.status || "no data") +
     " · FYERS " + (fy ? "live, " + age + " s old" : age === null ? "NO DATA" : "STALE (" + age + " s old)") + " · page " + new Date().toTimeString().slice(0, 8);
   if (!fy && !err) dot.className = "dot bad";
@@ -222,7 +227,9 @@ function renderPerf(j) {
 
 function renderReports(j) {
   var n = $("report");
-  n.textContent = j.latest_markdown || (j.latest && !j.latest.error ? JSON.stringify(j.latest, null, 1) : "No daily report yet.");
+  $("report-date").textContent = j.session_date ? "session " + j.session_date : "";
+  $("report-label").textContent = j.label || "";
+  n.textContent = j.latest_markdown || (j.latest && !j.latest.error ? JSON.stringify(j.latest, null, 1) : "No NSE end-of-day report yet.");
 }
 
 function renderLogs(j) {
@@ -487,8 +494,8 @@ var loaders = {
   market: function () { return api("/api/overview").then(renderOverview); },
   signals: function () { return api("/api/signals").then(renderSignals); },
   positions: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/trades").then(renderTrades)]); },
-  perf: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/performance").then(renderPerf), api("/api/reports").then(renderReports)]); },
-  study: function () { return ST.doc ? Promise.resolve() : api("/api/study").then(renderStudy); },
+  perf: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/performance").then(renderPerf)]); },
+  study: function () { return ST.doc ? Promise.resolve() : Promise.all([api("/api/study").then(renderStudy), api("/api/reports").then(renderReports)]); },
   control: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/logs").then(renderLogs)]); }
 };
 var busy = false;

@@ -106,10 +106,57 @@ class Web(unittest.TestCase):
         m = self.c.get("/api/market").get_json()
         self.assertEqual((m["spot"], m["snapshot_time"], m["atm_strike"]), (25030.5, t(10, 4).isoformat(), 25050.0))
         self.assertEqual([o["status"] for o in m["options"]], ["OK", "OK", "STALE"])
+        self.assertEqual((m["spot_source"], m["spot_age_s"], m["feed"]), ("REST 1-minute", 60.0, "FYERS LIVE"))
+        self.assertFalse(m["websocket"]["running"])
         shutil.rmtree(self.rec)
         m = self.c.get("/api/market").get_json()
         self.assertFalse(m["available"])
         self.assertNotIn("spot", m)                              # no number at all, never a 0
+
+    def _app_with_feed(self, quotes, written):
+        from nse_bot import live_feed
+        feed = os.path.join(self.dir, "feed")
+        live_feed.write_atomic(os.path.join(feed, DAY.isoformat(), live_feed.FILE),
+                               {"written_at": written, "connected": True, "ticks_received": 9,
+                                "subscribed": list(quotes), "quotes": quotes, "events": []})
+        app = webapp.create_app(dict(self.env, DASH_LIVE_FEED=feed), publish=lambda d: True,
+                                github=lambda *a, **k: (200, {}), now=NOW)
+        c = app.test_client()
+        c.get("/login?k=" + KEY)
+        return c.get("/api/market").get_json()
+
+    def test_websocket_ticks_override_the_snapshot_with_their_own_time_and_age(self):
+        ep = lambda h, m, s=0: t(h, m, s).timestamp()                      # noqa: E731
+        m = self._app_with_feed({
+            "NSE:NIFTY50-INDEX": {"ltp": 25041.25, "exch_feed_time": ep(10, 4, 58)},
+            "NSE:NIFTY26N0325050CE": {"ltp": 31.5, "bid_price": 31.4, "ask_price": 31.6, "vol_traded_today": 1200,
+                                      "OI": 5100, "exch_feed_time": ep(10, 4, 59)},
+            "NSE:NIFTY26N0325000CE": {"ltp": 60.0, "bid_price": 59.9, "ask_price": 60.1,
+                                      "exch_feed_time": ep(10, 4, 20)}}, t(10, 5).isoformat())
+        self.assertEqual((m["spot"], m["spot_source"], m["spot_age_s"], m["spot_status"]),
+                         (25041.25, "WebSocket", 2.0, "OK"))
+        o = {x["symbol"]: x for x in m["options"]}
+        a = o["NSE:NIFTY26N0325050CE"]
+        self.assertEqual((a["bid"], a["ask"], a["ltp"], a["volume"], a["oi"], a["age_s"], a["status"], a["source"]),
+                         (31.4, 31.6, 31.5, 1200, 5100, 1.0, "OK", "WebSocket"))
+        self.assertEqual((o["NSE:NIFTY26N0325000CE"]["status"], o["NSE:NIFTY26N0325000CE"]["age_s"]), ("STALE", 40.0))
+        pe = o["NSE:NIFTY26N0325050PE"]                                   # no tick: the REST snapshot, labelled
+        self.assertEqual((pe["source"], pe["status"], pe["ltp"]), ("REST 1-minute", "STALE", 30.2))
+        self.assertTrue(m["websocket"]["connected"])
+
+    def test_eod_report_is_labelled_not_live(self):
+        os.makedirs(os.path.join(self.root, "eod"))
+        with open(os.path.join(self.root, "eod", "2026-10-28.md"), "w") as f:
+            f.write("# NSE EOD 2026-10-28")
+        self.login()
+        r = self.c.get("/api/reports").get_json()
+        self.assertEqual((r["feed"], r["live"], r["session_date"]), ("NSE END-OF-DAY", False, "2026-10-28"))
+        self.assertIn("NOT LIVE", r["label"])
+        m = self.c.get("/api/market").get_json()
+        self.assertNotIn("EOD", json.dumps(m))
+        html = open(os.path.join(synth.ROOT, "nse_bot", "web", "static", "index.html")).read()
+        perf = html[html.index('id="tab-perf"'):html.index('id="tab-study"')]
+        self.assertNotIn('id="report"', perf)                               # not on the P&L tab
 
     def test_overview_shows_the_shared_risk_book_and_real_limits(self):
         cfg = synth.cfg(os.path.join(self.root), risk_state_dir=os.path.join(self.root, "shared-risk"),
