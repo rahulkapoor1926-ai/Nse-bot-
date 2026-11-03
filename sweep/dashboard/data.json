@@ -1,10 +1,10 @@
 {
   "bot": {
-    "heartbeat": "2026-11-02T23:11:39.159417+05:30",
+    "heartbeat": "2026-11-03T11:32:53.497863+05:30",
     "last_error": null,
-    "reported_status": "stopped",
+    "reported_status": "running",
     "stale_after_seconds": 180,
-    "status": "Stopped"
+    "status": "Running"
   },
   "by_strategy": {},
   "capital_inr": 20000.0,
@@ -18,23 +18,21 @@
       "locked": false,
       "realized_pnl": 0.0,
       "trades": 0
+    },
+    {
+      "date": "2026-11-03",
+      "lock_reason": null,
+      "locked": false,
+      "realized_pnl": 0.0,
+      "trades": 0
     }
   ],
   "decisions_today": [
     {
-      "bias": "bullish",
+      "bias": null,
       "decision": "SKIP",
-      "evaluated_at": "2026-11-02T13:00:26.994720+05:30",
-      "skip_reason": "confirmation: no 5m close beyond the sweep bar's high with a 50%+ body within 6 bars",
-      "strategy": "sweep-reversal",
-      "underlying": "NIFTY",
-      "why": null
-    },
-    {
-      "bias": "bullish",
-      "decision": "SKIP",
-      "evaluated_at": "2026-11-02T12:47:46.682705+05:30",
-      "skip_reason": "structure: no BOS/CHoCH between the sweep and the confirmation",
+      "evaluated_at": "2026-11-03T11:27:45.003009+05:30",
+      "skip_reason": "sweep: no liquidity sweep with a reclaim today",
       "strategy": "sweep-reversal",
       "underlying": "NIFTY",
       "why": null
@@ -47,14 +45,14 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-11-02T23:11:48.880110+05:30",
+  "generated_at": "2026-11-03T11:32:53.497863+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,
   "live_orders_enabled": false,
   "open_positions": [],
   "today": {
-    "date": "2026-11-02",
+    "date": "2026-11-03",
     "lock_reason": null,
     "locked": false,
     "pnl": 0.0,

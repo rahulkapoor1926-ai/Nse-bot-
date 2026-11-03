@@ -3,6 +3,8 @@ instruments-fyers.csv*
 *.part
 recordings/
 sweep-recordings/
+fyers-recordings/
+signal-study/
 logs/
 decisions/
 eod-raw/

@@ -1,10 +1,10 @@
 {
   "bot": {
-    "heartbeat": "2026-11-02T23:11:42.535051+05:30",
+    "heartbeat": "2026-11-03T11:32:54.134031+05:30",
     "last_error": null,
-    "reported_status": "stopped",
+    "reported_status": "running",
     "stale_after_seconds": 180,
-    "status": "Stopped"
+    "status": "Running"
   },
   "by_strategy": {},
   "capital_inr": 20000.0,
@@ -14,6 +14,13 @@
   "days": [
     {
       "date": "2026-11-02",
+      "lock_reason": null,
+      "locked": false,
+      "realized_pnl": 0.0,
+      "trades": 0
+    },
+    {
+      "date": "2026-11-03",
       "lock_reason": null,
       "locked": false,
       "realized_pnl": 0.0,
@@ -28,14 +35,14 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-11-02T23:11:48.792942+05:30",
+  "generated_at": "2026-11-03T11:32:54.134031+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,
   "live_orders_enabled": false,
   "open_positions": [],
   "today": {
-    "date": "2026-11-02",
+    "date": "2026-11-03",
     "lock_reason": null,
     "locked": false,
     "pnl": 0.0,

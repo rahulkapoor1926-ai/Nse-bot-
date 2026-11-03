@@ -1,0 +1,1 @@
+{"bias": null, "decision": "SKIP", "evaluated_at": "2026-11-03T11:27:45.003009+05:30", "skip_reason": "sweep: no liquidity sweep with a reclaim today", "strategy": "sweep-reversal", "underlying": "NIFTY", "why": null}
