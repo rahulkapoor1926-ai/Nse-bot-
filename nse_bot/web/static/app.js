@@ -84,7 +84,7 @@ function renderMarket(m) {
     c.appendChild(el("div", "p", x.ltp === null ? "—" : num(x.ltp)));
     var ba = el("div", "ba"); ba.appendChild(el("span", "", "bid " + num(x.bid))); ba.appendChild(el("span", "", "ask " + num(x.ask)));
     c.appendChild(ba);
-    c.appendChild(el("div", "small muted", "vol " + num(x.volume, 0) + " · OI " + num(x.oi, 0)));
+    c.appendChild(el("div", "small muted", "vol " + num(x.volume, 0) + " · OI " + num(x.oi, 0) + (x.oi_source ? " (" + x.oi_source + " " + hhmm(x.oi_time) + ")" : "")));
     c.appendChild(el("div", "small muted", (x.source || "") + " · " + hhmm(x.quote_time) + (x.age_s === null || x.age_s === undefined ? "" : " · " + Math.round(x.age_s) + " s old")));
     c.appendChild(pill(x.status, statusKind(x.status)));
     o.appendChild(c);

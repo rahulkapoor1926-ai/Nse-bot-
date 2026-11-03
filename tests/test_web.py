@@ -140,6 +140,9 @@ class Web(unittest.TestCase):
         self.assertEqual((a["bid"], a["ask"], a["ltp"], a["volume"], a["oi"], a["age_s"], a["status"], a["source"]),
                          (31.4, 31.6, 31.5, 1200, 5100, 1.0, "OK", "WebSocket"))
         self.assertEqual((o["NSE:NIFTY26N0325000CE"]["status"], o["NSE:NIFTY26N0325000CE"]["age_s"]), ("STALE", 40.0))
+        itm = o["NSE:NIFTY26N0325000CE"]                                  # no OI on the socket: REST OI, labelled
+        self.assertEqual((itm["oi"], itm["oi_source"]), (5000.0, "REST 1-minute"))
+        self.assertNotIn("oi_source", a)
         pe = o["NSE:NIFTY26N0325050PE"]                                   # no tick: the REST snapshot, labelled
         self.assertEqual((pe["source"], pe["status"], pe["ltp"]), ("REST 1-minute", "STALE", 30.2))
         self.assertTrue(m["websocket"]["connected"])

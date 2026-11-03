@@ -254,6 +254,8 @@ class View(object):
                 o.update(bid=q.get("bid_price"), ask=q.get("ask_price"), ltp=q.get("ltp"),
                          volume=q.get("vol_traded_today"), oi=q.get("OI"), quote_time=t, age_s=age,
                          source="WebSocket", status=flag(age))
+                if o["oi"] is None and num(r["oi"]) is not None:      # the socket sends no OI for some ticks
+                    o.update(oi=num(r["oi"]), oi_source="REST 1-minute", oi_time=last)
             else:
                 age = rest_age(last)
                 o.update(bid=num(r["bid"]), ask=num(r["ask"]), ltp=num(r["ltp"]), volume=num(r["volume"]),
