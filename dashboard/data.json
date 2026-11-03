@@ -1,6 +1,6 @@
 {
   "bot": {
-    "heartbeat": "2026-11-03T12:11:21.573839+05:30",
+    "heartbeat": "2026-11-03T12:16:27.855343+05:30",
     "last_error": null,
     "reported_status": "running",
     "stale_after_seconds": 180,
@@ -35,7 +35,7 @@
     }
   ],
   "errors": [],
-  "generated_at": "2026-11-03T12:11:21.573839+05:30",
+  "generated_at": "2026-11-03T12:16:27.855343+05:30",
   "label": "SIMULATED (paper trading). No real orders. Not evidence of future profit.",
   "ledger_integrity": "ok",
   "ledger_records": 0,
