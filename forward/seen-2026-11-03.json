@@ -1,3 +1,3 @@
 {
-  "orb15-atm|NIFTY|NSE:NIFTY26N0323650CE|2026-11-03 10:20:00+05:30": "REJECTED|signal is past its entry window 10:25-10:30 IST (live and backtest enter only there)"
+  "orb15-atm|NIFTY|NSE:NIFTY26N0323650CE|2026-11-03 10:20:00+05:30": "REJECTED|signal is past its entry window 10:25-10:30 IST (live and backtest enter only there); quote: thin bid: 65 units < 130"
 }
