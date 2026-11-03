@@ -50,7 +50,7 @@
   "reason": null,
   "websocket": {
    "connected": true,
-   "file_age_s": 0.8,
+   "file_age_s": 0.9,
    "last_event": {
     "detail": {
      "code": 200,
@@ -59,17 +59,17 @@
      "type": "sub"
     },
     "kind": "message",
-    "time": "2026-11-03T12:06:02+05:30"
+    "time": "2026-11-03T12:12:02+05:30"
    },
    "running": true,
    "subscribed": 7,
-   "ticks_received": 2509,
-   "written_at": "2026-11-03T12:08:36+05:30"
+   "ticks_received": 10328,
+   "written_at": "2026-11-03T12:16:41+05:30"
   },
-  "spot": 23698.3,
+  "spot": 23658.65,
   "spot_source": "WebSocket",
-  "spot_time": "2026-11-03T12:08:35+05:30",
-  "spot_age_s": 1.8,
+  "spot_time": "2026-11-03T12:16:40+05:30",
+  "spot_age_s": 1.9,
   "spot_status": "OK",
   "options": 6,
   "options_by_source": {
@@ -80,85 +80,85 @@
   },
   "option_quotes": [
    {
-    "symbol": "NSE:NIFTY26N0323700CE",
-    "moneyness": "ATM",
-    "ltp": 44.75,
-    "bid": 44.5,
-    "ask": 44.6,
-    "volume": 826595380,
-    "oi": null,
-    "quote_time": "2026-11-03T12:08:35+05:30",
-    "age_s": 1.8,
-    "source": "WebSocket",
-    "status": "OK"
-   },
-   {
     "symbol": "NSE:NIFTY26N0323650CE",
-    "moneyness": "ITM1",
-    "ltp": 72.0,
-    "bid": 71.75,
-    "ask": 71.95,
-    "volume": 730069860,
+    "moneyness": "ATM",
+    "ltp": 48.4,
+    "bid": 47.9,
+    "ask": 48.05,
+    "volume": 773542445,
     "oi": null,
-    "quote_time": "2026-11-03T12:08:35+05:30",
-    "age_s": 1.8,
+    "quote_time": "2026-11-03T12:16:40+05:30",
+    "age_s": 1.9,
     "source": "WebSocket",
     "status": "OK"
    },
    {
     "symbol": "NSE:NIFTY26N0323600CE",
-    "moneyness": "ITM2",
-    "ltp": 107.85,
-    "bid": 107.6,
-    "ask": 107.8,
-    "volume": 696578155,
+    "moneyness": "ITM1",
+    "ltp": 77.45,
+    "bid": 77.6,
+    "ask": 77.85,
+    "volume": 722706335,
     "oi": null,
-    "quote_time": "2026-11-03T12:08:36+05:30",
-    "age_s": 0.8,
+    "quote_time": "2026-11-03T12:16:40+05:30",
+    "age_s": 1.9,
+    "source": "WebSocket",
+    "status": "OK"
+   },
+   {
+    "symbol": "NSE:NIFTY26N0323550CE",
+    "moneyness": "ITM2",
+    "ltp": 114.2,
+    "bid": 114.2,
+    "ask": 114.45,
+    "volume": 285996555,
+    "oi": null,
+    "quote_time": "2026-11-03T12:16:40+05:30",
+    "age_s": 1.9,
+    "source": "WebSocket",
+    "status": "OK"
+   },
+   {
+    "symbol": "NSE:NIFTY26N0323650PE",
+    "moneyness": "ATM",
+    "ltp": 55.85,
+    "bid": 56.05,
+    "ask": 56.1,
+    "volume": 487998420,
+    "oi": null,
+    "quote_time": "2026-11-03T12:16:40+05:30",
+    "age_s": 1.9,
     "source": "WebSocket",
     "status": "OK"
    },
    {
     "symbol": "NSE:NIFTY26N0323700PE",
-    "moneyness": "ATM",
-    "ltp": 60.05,
-    "bid": 60.05,
-    "ask": 60.25,
-    "volume": 295387560,
+    "moneyness": "ITM1",
+    "ltp": 85.2,
+    "bid": 85.4,
+    "ask": 85.6,
+    "volume": 342687800,
     "oi": null,
-    "quote_time": "2026-11-03T12:08:35+05:30",
-    "age_s": 1.8,
+    "quote_time": "2026-11-03T12:16:40+05:30",
+    "age_s": 1.9,
     "source": "WebSocket",
     "status": "OK"
    },
    {
     "symbol": "NSE:NIFTY26N0323750PE",
-    "moneyness": "ITM1",
-    "ltp": 90.4,
-    "bid": 90.45,
-    "ask": 90.7,
-    "volume": 70961150,
-    "oi": null,
-    "quote_time": "2026-11-03T12:08:35+05:30",
-    "age_s": 1.8,
-    "source": "WebSocket",
-    "status": "OK"
-   },
-   {
-    "symbol": "NSE:NIFTY26N0323800PE",
     "moneyness": "ITM2",
-    "ltp": 128.8,
-    "bid": 128.9,
-    "ask": 129.2,
-    "volume": 54835625,
+    "ltp": 121.75,
+    "bid": 121.85,
+    "ask": 122.15,
+    "volume": 83423470,
     "oi": null,
-    "quote_time": "2026-11-03T12:08:35+05:30",
-    "age_s": 1.8,
+    "quote_time": "2026-11-03T12:16:40+05:30",
+    "age_s": 1.9,
     "source": "WebSocket",
     "status": "OK"
    }
   ]
  },
  "sign_in_key": "sent to Telegram only",
- "live_feed_checked_at": "2026-11-03T12:08:36"
+ "live_feed_checked_at": "2026-11-03T12:16:41"
 }
