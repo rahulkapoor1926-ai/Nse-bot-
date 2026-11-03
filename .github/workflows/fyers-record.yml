@@ -26,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  actions: read         # to see whether a live-session run (which records itself) is going
 
 concurrency:
   group: fyers-record
@@ -43,12 +44,17 @@ jobs:
 
       - name: Trading day?
         id: day
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           from nse_bot import clock
           cal = clock.Calendar.load("nse_bot/data/nse_holidays.json")
           print("trading=%s" % str(cal.is_trading_day(clock.now_ist().date())).lower())
           PY
+          # a live-session run records the same data itself: never two recorders on one FYERS budget
+          LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live-session.yml/runs?status=in_progress" --jq .total_count 2>/dev/null || echo 0)
+          if [ "${LIVE:-0}" != "0" ]; then echo "live-session is running and recording: this run stops"; echo "trading=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Config (paper, FYERS, real orders disabled)
         if: steps.day.outputs.trading == 'true' || github.event_name == 'workflow_dispatch'

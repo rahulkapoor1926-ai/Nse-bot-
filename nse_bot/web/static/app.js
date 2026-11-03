@@ -15,6 +15,11 @@ function rs(v) {
   var n = Number(v);
   return (n < 0 ? "-" : "") + "₹" + Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function ageSec(t) {
+  if (!t) return null;
+  var ms = Date.parse(t);
+  return isNaN(ms) ? null : Math.max(0, Math.round((Date.now() - ms) / 1000));
+}
 function num(v, d) { return v === null || v === undefined || v === "" ? "—" : Number(v).toLocaleString("en-IN", { maximumFractionDigits: d === undefined ? 2 : d }); }
 function sign(v) { return v === null || v === undefined ? "" : Number(v) > 0 ? "up" : Number(v) < 0 ? "down" : ""; }
 function hhmm(t) { if (!t) return "—"; var m = String(t).match(/T?(\d\d:\d\d(:\d\d)?)/); return m ? m[1] : String(t); }
@@ -95,14 +100,16 @@ function renderOverview(j) {
   var running = orb.status === "Running" || sw.status === "Running";
   var err = orb.status === "Error" || sw.status === "Error";
   dot.className = "dot " + (err ? "bad" : running ? "ok" : "idle");
+  var m = j.market || {}, age = ageSec(m.snapshot_time), fy = (h.fyers || {}).connected && age !== null && age <= 120;
   $("hb-text").textContent = "ORB " + (orb.status || "no data") + " · Sweep " + (sw.status || "no data") +
-    " · FYERS " + ((h.fyers || {}).connected ? "connected" : "no live data");
+    " · FYERS " + (fy ? "live, " + age + " s old" : age === null ? "NO DATA" : "STALE (" + age + " s old)") + " · page " + new Date().toTimeString().slice(0, 8);
+  if (!fy && !err) dot.className = "dot bad";
   var r = j.risk || {}, t = clear($("today"));
   stat(t, "Day P&L (both)", rs(r.day_pnl), sign(r.day_pnl));
   stat(t, "Realised", rs(r.realized_pnl), sign(r.realized_pnl));
   stat(t, "Unrealised", rs(r.unrealized_pnl), sign(r.unrealized_pnl));
   stat(t, "Loss room left", rs(r.remaining_loss_inr));
-  stat(t, "Entries", (r.entries === undefined ? "—" : r.entries) + " / " + ((r.limits || {}).max_trades_per_day || "—"));
+  stat(t, "Entries left", r.entries === undefined ? "—" : Math.max(0, ((r.limits || {}).max_trades_per_day || 0) - r.entries) + " of " + ((r.limits || {}).max_trades_per_day || "—"));
   stat(t, "SL exits", (r.stop_exits === undefined ? "—" : r.stop_exits) + " / " + ((r.limits || {}).max_stop_exits_per_day || "—"));
   stat(t, "Risk state", r.locked ? "LOCKED" : r.error ? "ERROR" : "open", r.locked || r.error ? "down" : "up");
   stat(t, "Open lots", (r.open_lots === undefined ? "—" : r.open_lots) + " / " + ((r.limits || {}).max_open_lots || "—"));
@@ -116,10 +123,12 @@ function renderPositions(books) {
   ["ORB", "Sweep"].forEach(function (b) {
     ((books[b] || {}).open_positions || []).forEach(function (x) {
       any = true;
-      item(p, x.symbol + " · " + b, rs(x.unrealized_pnl), [
-        "qty " + x.qty + " · entry " + num(x.entry_price) + " at " + hhmm(x.entry_time),
-        "current bid " + num(x.current_bid) + " (" + hhmm(x.price_time) + ")" + (x.price_note ? " · " + x.price_note : ""),
-        "stop " + num(x.stop) + " · target " + num(x.target)], sign(x.unrealized_pnl));
+      var pa = ageSec(x.price_time);
+      item(p, "LONG " + String(x.symbol).slice(-2) + " · " + x.symbol + " · " + b, rs(x.unrealized_pnl), [
+        "qty " + x.qty + " (1 lot max) · entry " + num(x.entry_price) + " at " + hhmm(x.entry_time),
+        "live bid (exit price) " + num(x.current_bid) + " at " + hhmm(x.price_time) + (pa === null ? " · NO PRICE" : pa > 90 ? " · STALE " + pa + " s" : " · " + pa + " s old") + (x.price_note ? " · " + x.price_note : ""),
+        "stop " + num(x.stop) + " · target " + num(x.target) + " · trailing: none in the approved rules",
+        "unrealised P&L uses the live bid after estimated exit charges as computed by the bot"], sign(x.unrealized_pnl));
     });
   });
   if (!any) empty(p, "No open paper positions.");
@@ -500,6 +509,6 @@ document.addEventListener("DOMContentLoaded", function () {
     S.csrf = j.csrf; S.mode = j.mode; S.canStart = j.can_start; S.controls = j.controls;
     $("mode").value = j.mode;
     refresh();
-    setInterval(refresh, 15000);
+    setInterval(refresh, 5000);
   }).catch(function () {});
 });
