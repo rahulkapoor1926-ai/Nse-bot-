@@ -147,6 +147,23 @@ class Web(unittest.TestCase):
         self.assertEqual((pe["source"], pe["status"], pe["ltp"]), ("REST 1-minute", "STALE", 30.2))
         self.assertTrue(m["websocket"]["connected"])
 
+    def test_day_audit_api_needs_sign_in_and_reads_the_replay(self):
+        import test_day_audit
+        da = os.path.join(self.dir, "da")
+        os.makedirs(da)
+        with open(os.path.join(da, DAY.isoformat() + ".json"), "w") as f:
+            json.dump(dict(test_day_audit.audit(lots=0), day=DAY.isoformat()), f)
+        app = webapp.create_app(dict(self.env, DASH_DAY_AUDIT=da), publish=lambda d: True,
+                                github=lambda *a, **k: (200, {}), now=NOW)
+        c = app.test_client()
+        self.assertEqual(c.get("/api/day-audit").status_code, 401)
+        c.get("/login?k=" + KEY)
+        v = c.get("/api/day-audit").get_json()
+        self.assertEqual(v["verdict"], "NO VALID SETUP")
+        self.assertEqual([f["strategy"] for f in v["findings"]], ["ORB", "Sweep"])
+        self.assertEqual(self.c.get("/login?k=" + KEY).status_code, 303)
+        self.assertEqual(self.c.get("/api/day-audit").get_json()["verdict"], "NOT AUDITED YET")
+
     def test_eod_report_is_labelled_not_live(self):
         os.makedirs(os.path.join(self.root, "eod"))
         with open(os.path.join(self.root, "eod", "2026-10-28.md"), "w") as f:

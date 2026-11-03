@@ -16,6 +16,7 @@ Environment
   DASH_STATE_ROOT      checkout of the paper-state branch (or a local state/ folder)
   DASH_RECORDINGS      folder of the live FYERS recorder (optional)
   DASH_LIVE_FEED       folder of the FYERS WebSocket feed, live_feed.py (optional)
+  DASH_DAY_AUDIT       folder of day-audit replays, <day>.json (optional)
   DASH_CONTROL_DIR     git worktree of the bot-control branch (optional; enables controls)
   DASH_CONFIG          bot config (default config/paper.example.json)
   GITHUB_REPOSITORY / GITHUB_TOKEN   for "start paper run" (optional)
@@ -74,7 +75,8 @@ def create_app(env=None, publish=None, github=None, now=clock.now_ist):
     control_dir = env.get("DASH_CONTROL_DIR")
     view = View(root, cfg, env.get("DASH_RECORDINGS"),
                 os.path.join(control_dir, control.FILE) if control_dir else None, now=now,
-                study_path=env.get("DASH_STUDY"), live_feed=env.get("DASH_LIVE_FEED"))
+                study_path=env.get("DASH_STUDY"), live_feed=env.get("DASH_LIVE_FEED"),
+                day_audit_dir=env.get("DASH_DAY_AUDIT"))
     publish = publish or (lambda doc: _publish_git(control_dir, doc))
     github = github or _github
     repo, gtoken = env.get("GITHUB_REPOSITORY"), env.get("GITHUB_TOKEN")
@@ -169,6 +171,10 @@ def create_app(env=None, publish=None, github=None, now=clock.now_ist):
     @app.get("/api/signals")
     def api_signals():
         return jsonify(view.signals(mode()))
+
+    @app.get("/api/day-audit")
+    def api_day_audit():
+        return jsonify(view.day_audit(mode()))
 
     @app.get("/api/trades")
     def api_trades():

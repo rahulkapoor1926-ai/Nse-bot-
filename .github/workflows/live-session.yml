@@ -165,7 +165,7 @@ jobs:
           echo "DASH_KEY=$KEY" >> "$GITHUB_ENV"
           END="$UNTIL"; echo "END=$END" >> "$GITHUB_ENV"
           # no GITHUB_TOKEN for Flask: "Start" is off here (the bots already run in this job)
-          env -u GITHUB_TOKEN DASH_KEY="$KEY" DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_LIVE_FEED=feed \
+          env -u GITHUB_TOKEN DASH_KEY="$KEY" DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_LIVE_FEED=feed DASH_DAY_AUDIT=day-audit \
             DASH_STUDY=state/signal-study/study.json DASH_CONFIG=config/paper.json DASH_HOST=127.0.0.1 DASH_PORT=8080 \
             nohup python3 -m nse_bot.web.app > flask.log 2>&1 &
           curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/download/2024.12.2/cloudflared-linux-amd64 \
@@ -227,8 +227,11 @@ jobs:
           n=0
           while kill -0 "$(cat orb.pid)" 2>/dev/null || kill -0 "$(cat sweep.pid)" 2>/dev/null; do
             sleep 30; n=$((n+1))
-            pgrep -f "nse_bot.web.app" > /dev/null || { echo "dashboard restarted"; DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_LIVE_FEED=feed DASH_STUDY=state/signal-study/study.json DASH_CONFIG=config/paper.json nohup python3 -m nse_bot.web.app >> flask.log 2>&1 & }
+            pgrep -f "nse_bot.web.app" > /dev/null || { echo "dashboard restarted"; DASH_STATE_ROOT=state DASH_CONTROL_DIR=ctl DASH_RECORDINGS=state/fyers-recordings DASH_LIVE_FEED=feed DASH_DAY_AUDIT=day-audit DASH_STUDY=state/signal-study/study.json DASH_CONFIG=config/paper.json nohup python3 -m nse_bot.web.app >> flask.log 2>&1 & }
             [ $((n % 10)) -eq 0 ] && { scripts/save_state.sh || true; }
+            # day audit: replay today's real bars through the unchanged rules (read-only, 4 FYERS calls), every 30 min
+            [ $((n % 60)) -eq 2 ] && { python3 -m nse_bot --config config/paper.json day-audit --out day-audit \
+              --max-calls-per-day 20 > day-audit.log 2>&1 || tail -n 3 day-audit.log; }
             # live feed status into the status file a few times (job logs are unreadable while running)
             case $n in 4|20|60|240) curl -s -b jar "$URL/api/market" | python3 scripts/feed_status.py > feed-status.json && \
               python3 -c "import json,datetime; d=json.load(open('ctl/dashboard.json')); d['live_feed']=json.load(open('feed-status.json')); d['live_feed_checked_at']=datetime.datetime.now().isoformat(timespec='seconds'); json.dump(d, open('ctl/dashboard.json','w'), indent=1)" && \

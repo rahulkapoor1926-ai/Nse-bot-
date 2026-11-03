@@ -176,6 +176,25 @@ function renderHealth(h, books, c) {
   ["btn-pause", "btn-resume", "btn-halt"].forEach(function (id) { $(id).disabled = !S.controls; });
 }
 
+// ---- day audit: replay of today's real bars vs what the bots logged ------------------
+function verdictKind(v) { return v === "TRADED" ? "ok" : v === "NO VALID SETUP" ? "" : v === "NOT AUDITED YET" ? "warn" : "bad"; }
+function renderDayAudit(j) {
+  j = j || {};
+  var v = $("da-verdict"); v.textContent = j.verdict || "—"; v.className = "pill " + verdictKind(j.verdict);
+  var d = j.data || {}, r = j.orb_opening_range || {};
+  $("da-meta").textContent = j.audited_at ? "replayed " + hhmm(j.audited_at) + " · " + (d.index_1m_bars_today || 0) + " index bars to " + hhmm(d.last_bar) +
+    (r.high ? " · ORB range " + num(r.low) + "-" + num(r.high) : "") : (j.why || "");
+  var n = clear($("da-findings")), c = clear($("ctl-verdict"));
+  (j.findings || []).forEach(function (f) {
+    var lines = [(f.time ? hhmm(f.time) + " · " : "") + "rule: " + f.rule + (f.contract ? " · " + f.contract : ""), f.reason];
+    item(n, f.strategy, pill(f.verdict, verdictKind(f.verdict)), lines);
+    item(c, f.strategy, pill(f.verdict, verdictKind(f.verdict)), lines);
+  });
+  if (!n.firstChild) empty(n, j.why || "No findings.");
+  if (!c.firstChild) item(c, "Today", pill(j.verdict || "—", verdictKind(j.verdict)), [j.why || ""]);
+  $("da-note").textContent = j.note || "";
+}
+
 // ---- other tabs -------------------------------------------------------------------
 function renderSignals(j) {
   var o = clear($("orb"));
@@ -492,11 +511,11 @@ function drawCandles(j) {
 // ---- loop -----------------------------------------------------------------------
 var loaders = {
   market: function () { return api("/api/overview").then(renderOverview); },
-  signals: function () { return api("/api/signals").then(renderSignals); },
+  signals: function () { return Promise.all([api("/api/signals").then(renderSignals), api("/api/day-audit").then(renderDayAudit)]); },
   positions: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/trades").then(renderTrades)]); },
   perf: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/performance").then(renderPerf)]); },
   study: function () { return ST.doc ? Promise.resolve() : Promise.all([api("/api/study").then(renderStudy), api("/api/reports").then(renderReports)]); },
-  control: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/logs").then(renderLogs)]); }
+  control: function () { return Promise.all([api("/api/overview").then(renderOverview), api("/api/logs").then(renderLogs), api("/api/day-audit").then(renderDayAudit)]); }
 };
 var busy = false;
 function refresh() {

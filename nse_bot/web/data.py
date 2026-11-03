@@ -61,9 +61,19 @@ def _jsonl_tail(path, n):
 
 class View(object):
     def __init__(self, root, cfg, recordings=None, control_path=None, now=clock.now_ist, study_path=None,
-                 live_feed=None):
+                 live_feed=None, day_audit_dir=None):
         self.root, self.cfg, self.recordings, self.control_path, self.now = root, cfg, recordings, control_path, now
-        self.study_path, self.live_feed = study_path, live_feed
+        self.study_path, self.live_feed, self.day_audit_dir = study_path, live_feed, day_audit_dir
+
+    def day_audit(self, mode):
+        """Today's replay (cli day-audit) set against the bots' own records, with a verdict."""
+        from . import day_audit
+        doc = None
+        if self.day_audit_dir:
+            doc = _read(os.path.join(self.day_audit_dir, "%s.json" % self.now().date().isoformat()))
+            if doc and "error" in doc:
+                doc = None
+        return day_audit.verdict(doc, self.signals(mode), self.risk(mode))
 
     def _dir(self, rel):
         return os.path.join(self.root, rel) if rel else self.root
