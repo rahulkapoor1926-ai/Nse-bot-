@@ -610,6 +610,89 @@ def cmd_signal_study(a):
     return 0
 
 
+
+def cmd_day_audit(a):
+    """Why a day had (or had no) paper trade: replay the day's real FYERS 1-minute NIFTY bars through the
+    unchanged ORB and Sweep rules, and for an ORB setup look up the real option premium in its entry window
+    and whether one lot fits the Rs 500 risk rule. Read-only: nothing is entered, filled or changed."""
+    from . import budget, patterns, scanner, structure as st, sweep
+    from .backtest import signal_study as SS
+    cfg, cal, cm = _common(a.config)
+    if cfg["data_source"] != "fyers":
+        raise ConfigError("day-audit reads FYERS history: data_source must be 'fyers'")
+    cfg, cal, cm, m, md = _fyers_ctx(a, cfg, cal, cm)
+    now = clock.now_ist()
+    day = dt.date.fromisoformat(a.date) if a.date else now.date()
+    end = min(now, clock.at(day, "15:30"))
+    iid = m.index_id(cfg["index_names"]["NIFTY"])
+    daily = md.candles(iid, "1d", clock.at(dt.date(day.year, 1, 1), "00:00"), end)
+    lo = clock.at(day - dt.timedelta(days=14), "09:15")
+    done = lambda bars: [b for b in bars if b[0] + dt.timedelta(minutes=1) <= end]     # noqa: E731
+    u1 = done(md.candles(iid, "1m", lo, end))
+    fut = m.current_future("NIFTY", day)
+    f1 = done(md.candles(fut.instrument_id, "1m", lo, end)) if fut else []
+    with open(cfg["holidays_file"], encoding="utf-8") as fh:
+        file_years = json.load(fh)["years"]
+    per_day = collections.Counter(b[0].date() for b in u1)
+    cal, _ = SS.observed_calendar(file_years, [b[0].date() for b in daily], per_day, day)
+    today = [b for b in u1 if b[0].date() == day]
+    orb_s, sw_s = _strategy(a.orb_strategy), _strategy(a.sweep_strategy)
+    doc = {"day": day.isoformat(), "generated": now.isoformat(timespec="seconds"),
+           "source": "FYERS /history 1-minute bars, read-only; rules unchanged",
+           "data": {"index_1m_bars_today": len(today),
+                    "first_bar": today[0][0].isoformat() if today else None,
+                    "last_bar": today[-1][0].isoformat() if today else None,
+                    "future": md.symbols.get(fut.instrument_id) if fut else None,
+                    "future_1m_bars_today": sum(1 for b in f1 if b[0].date() == day)}}
+    # ORB: the opening range, the first breakout, its entry window, and the option in that window
+    bars5 = st.resample(today, orb_s["interval_minutes"])
+    rng = patterns.opening_range(bars5, orb_s["params"]["or_minutes"], orb_s["interval_minutes"])
+    buf = orb_s["params"].get("buffer_pct", 0.0)
+    o = {"rules": {"or_minutes": orb_s["params"]["or_minutes"], "buffer_pct": buf,
+                   "interval_minutes": orb_s["interval_minutes"], "no_entries_before": cfg["no_entries_before"],
+                   "no_entries_after": cfg["no_entries_after"], "max_signals_per_day": orb_s.get("max_signals_per_day")},
+         "opening_range": None if rng is None else {"high": rng[0], "low": rng[1],
+                                                    "ce_trigger_close_above": round(rng[0] * (1 + buf / 100.0), 2),
+                                                    "pe_trigger_close_below": round(rng[1] * (1 - buf / 100.0), 2)}}
+    sigs = [x for x in SS.orb(u1, orb_s, cfg, cal)["signals"] if x["day"] == day.isoformat()]
+    o["signals"] = sigs
+    if not sigs:
+        o["verdict"] = "NO VALID SETUP" if today else "DATA FAILURE"
+    for sg in sigs:
+        try:
+            ex = scanner.choose_expiry(m, cal, "NIFTY", day, cfg["min_days_to_expiry"])
+            c = m.pick("NIFTY", ex, sg["option_type"], sg["trigger_close"], int(orb_s.get("strike_offset", 0)))
+            sym = md.symbols.get(c.instrument_id)
+            w0 = dt.datetime.fromisoformat(sg["entry_window"][0])
+            ob = md.candles(c.instrument_id, "1m", clock.at(day, "09:15"), end)
+            at = next((b for b in ob if b[0] >= w0), None)
+            sg["contract"] = {"symbol": sym, "expiry": ex.isoformat(), "lot_size": c.lot_size,
+                              "strike_offset": int(orb_s.get("strike_offset", 0))}
+            if at is None:
+                sg["entry_window_premium"] = {"status": "NO DATA", "why": "FYERS served no option bar in the window"}
+                continue
+            ltp = at[1]
+            stop = round(ltp * (1 - orb_s["stop_pct"] / 100.0), 2)
+            sz = budget.size_at_fills(cfg, cm, c, ltp, stop, day, cfg["max_daily_loss_inr"])
+            sg["entry_window_premium"] = {
+                "bar": at[0].isoformat(), "open_ltp": ltp, "high": at[2], "low": at[3], "close": at[4],
+                "note": "LTP of the first 1-minute option bar in the entry window (FYERS /history has no bid/ask; "
+                        "the bot enters on the live ask, so this is an approximation used ONLY for the risk check)",
+                "stop_20pct": stop, "lots_under_rs500_rule": sz["lots"], "sizing": sz}
+        except NseBotError as e:
+            sg["entry_window_premium"] = {"status": "ERROR", "why": str(e)[:200]}
+    doc["ORB"] = o
+    sw = SS.sweep_reversal(u1, f1, sw_s, cfg, cal) if f1 else {"signals": [], "day_audit": []}
+    doc["Sweep"] = {"signals": [x for x in sw["signals"] if x["day"] == day.isoformat()],
+                    "day_audit": [x for x in sw.get("day_audit") or [] if x["day"] == day.isoformat()],
+                    "rule_order": list(sweep.RULES),
+                    "not_evaluable": sw.get("not_evaluable") if not f1 else None}
+    doc["api_calls"] = md.calls_made
+    os.makedirs(a.out, exist_ok=True)
+    state.write_json(os.path.join(a.out, "%s.json" % day.isoformat()), doc)
+    print("DAY_AUDIT %s" % json.dumps(doc, default=str))
+    return 0
+
 def cmd_fetch_history(a):
     from .data import history
     cfg, cal, cm, m, md = _sahi_ctx(a)
@@ -701,6 +784,16 @@ def build_parser():
     s.add_argument("--max-calls-per-second", type=int, default=2)
     s.add_argument("--max-calls-per-day", type=int, default=60)
     s.set_defaults(fn=cmd_signal_study)
+    s = sub.add_parser("day-audit", help="replay one day's real FYERS bars through the unchanged ORB/Sweep rules "
+                                          "(read-only; why there was or was no paper trade)")
+    s.add_argument("--date"); s.add_argument("--out", default="state/day-audit")
+    s.add_argument("--master", default="state/instruments-fyers.csv"); s.add_argument("--refresh-master", action="store_true")
+    s.add_argument("--orb-strategy", default="config/strategies/orb15.example.json")
+    s.add_argument("--sweep-strategy", default="config/strategies/sweep.example.json")
+    s.add_argument("--max-calls-per-minute", type=int, default=10)
+    s.add_argument("--max-calls-per-second", type=int, default=2)
+    s.add_argument("--max-calls-per-day", type=int, default=20)
+    s.set_defaults(fn=cmd_day_audit)
     s = sub.add_parser("eod-report", help="daily NIFTY report from NSE's free end-of-day files (no login, no trades)")
     s.add_argument("--date", help="trading day YYYY-MM-DD (default: today IST)")
     s.add_argument("--out", default="state/eod"); s.add_argument("--raw", default="state/eod-raw")

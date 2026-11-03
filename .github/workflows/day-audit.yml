@@ -1,0 +1,72 @@
+# Why a day had (or had no) paper trade: replays the day's real FYERS 1-minute NIFTY bars through the
+# UNCHANGED ORB and Sweep rules and checks the ORB option premium in its entry window against the Rs 500
+# rule. READ-ONLY (GET /history, about 6 calls), manual only, no order code. The result goes to a private
+# Actions cache read by the dashboard (Signals and Control tabs) and is printed in the log.
+name: day-audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Trading day YYYY-MM-DD (empty = today IST)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: day-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Kolkata
+      FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Config (paper, FYERS, real orders disabled)
+        run: |
+          cp config/paper.example.json config/paper.json
+          python3 -m nse_bot --config config/paper.json validate-config
+          python3 -c "import json; c=json.load(open('config/paper.json')); assert c['data_source']=='fyers' and c['live_orders_enabled'] is False; print('data_source=fyers, live_orders_enabled=false')"
+
+      - name: FYERS auth code shape (never prints the code)
+        env:
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: python3 scripts/fyers_code_shape.py
+
+      - name: FYERS login (token masked, kept only for this job)
+        env:
+          FYERS_SECRET_ID: ${{ secrets.FYERS_SECRET_ID }}
+          FYERS_AUTH_CODE: ${{ secrets.FYERS_AUTH_CODE }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from nse_bot.broker import fyers
+          md = fyers.FyersReadOnly()
+          md.login()
+          print("::add-mask::%s" % md._token)
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write("FYERS_ACCESS_TOKEN=%s\n" % md._token)
+          print("FYERS login ok (token masked)")
+          PY
+
+      - name: Replay the day
+        env:
+          DATE_INPUT: ${{ github.event.inputs.date }}
+        run: |
+          python3 -m nse_bot --config config/paper.json day-audit --refresh-master --out state/day-audit \
+            ${DATE_INPUT:+--date "$DATE_INPUT"} --max-calls-per-day 20
+          python3 -c "import json,glob; [print(json.dumps(json.load(open(p)), indent=1)) for p in glob.glob('state/day-audit/*.json')]"
+
+      - name: Save the audit (private cache)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state/day-audit
+          key: day-audit-${{ github.run_id }}

@@ -433,3 +433,80 @@ class Cli(unittest.TestCase):
         self.assertEqual({s["data"] for s in doc["ORB"]["signals"]}, {"1m", "5m"})
         for s in doc["ORB"]["signals"]:
             self.assertIn(s["day"], doc["charts"])
+
+
+class DayAudit(unittest.TestCase):
+    """day-audit: today's real bars through the unchanged ORB rule, the option premium in the entry window
+    and the Rs 500 one-lot check; a flat day is proven NO VALID SETUP."""
+
+    def run_audit(self, day_fn, opt_open):
+        import json
+        import os
+        import shutil
+        import tempfile
+        from nse_bot import cli
+        from nse_bot.instruments import Contract
+        out = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, out)
+        day = dt.date(2026, 10, 29)
+        days, d = [], day
+        while len(days) < 8:
+            if CAL.is_trading_day(d):
+                days.insert(0, d)
+            d -= dt.timedelta(days=1)
+        one = {x: (day_fn(x) if x == day else flat(x)) for x in days}
+        c = Contract(9, "NSE:NIFTY26N0325050CE", "NIFTY", dt.date(2026, 11, 3), 25050.0, "CE", 65, 0.05, 1800)
+
+        class MD(object):
+            symbols, calls_made = {1: "NSE:NIFTY50-INDEX", 9: c.symbol}, 4
+
+            def candles(self, iid, size, a, b):
+                if size == "1d":
+                    return [(clock.at(x, "00:00"), 1, 2, 0, 1, 0) for x in days]
+                if iid == 9:
+                    return [(clock.at(day, "09:15") + dt.timedelta(minutes=i), opt_open, opt_open + 1,
+                             opt_open - 1, opt_open, 10) for i in range(375)]
+                return [bar for x in days if a <= clock.at(x, "09:15") <= b for bar in one[x]]
+
+        class M(object):
+            def index_id(self, name):
+                return 1
+
+            def current_future(self, u, day_):
+                return None
+
+            def expiries(self, u, today):
+                return [dt.date(2026, 11, 3)]
+
+            def pick(self, u, ex, typ, spot, off):
+                return c
+
+        cfgp = os.path.join(synth.ROOT, "config", "paper.example.json")
+        ctx = lambda a, cfg, cal, cm: (dict(cfg, data_source="fyers"), cal, cm, M(), MD())   # noqa: E731
+        with mock.patch.object(cli, "_fyers_ctx", ctx), \
+                mock.patch.object(cli.clock, "now_ist", lambda: clock.at(day, "16:00")), \
+                mock.patch.object(cli.config, "load", lambda p: dict(synth.cfg(out), data_source="fyers")):
+            rc = cli.main(["--config", cfgp, "day-audit", "--date", day.isoformat(), "--out", out])
+        self.assertEqual(rc, 0)
+        with open(os.path.join(out, day.isoformat() + ".json")) as f:
+            return json.load(f)
+
+    def test_setup_with_premium_and_lot_check(self):
+        doc = self.run_audit(breakout, 30.0)
+        o = doc["ORB"]
+        self.assertEqual(len(o["signals"]), 1)
+        sg = o["signals"][0]
+        self.assertEqual(sg["contract"]["symbol"], "NSE:NIFTY26N0325050CE")
+        p = sg["entry_window_premium"]
+        self.assertEqual((p["bar"], p["open_ltp"], p["stop_20pct"]), (sg["entry_window"][0], 30.0, 24.0))
+        self.assertEqual(p["lots_under_rs500_rule"], 1)
+        self.assertGreater(o["opening_range"]["high"], o["opening_range"]["low"])
+        self.assertEqual(doc["data"]["index_1m_bars_today"], 375)
+
+    def test_expensive_premium_cannot_fit_one_lot(self):
+        p = self.run_audit(breakout, 120.0)["ORB"]["signals"][0]["entry_window_premium"]
+        self.assertEqual(p["lots_under_rs500_rule"], 0)                    # 65 x 24 = Rs 1,560 > Rs 500
+
+    def test_flat_day_is_no_valid_setup(self):
+        o = self.run_audit(flat, 30.0)["ORB"]
+        self.assertEqual((o["signals"], o["verdict"]), ([], "NO VALID SETUP"))
