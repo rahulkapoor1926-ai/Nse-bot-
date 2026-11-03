@@ -261,7 +261,8 @@ INDEX_OUTCOME_NOTE = (
     "stop = the opening-range midpoint (patterns.py invalidate level), target = entry +/- 2.5 x the index "
     "distance to that stop (the strategy's target_r), time exit at flat_by (expiry_day_flat_by on expiry day). "
     "Entry = open of the first 1-minute bar of the entry window. Hits are 1-minute high/low touches; a bar touching "
-    "both is AMBIGUOUS. Points are NIFTY index points, not rupees.")
+    "both is AMBIGUOUS. A stop is filled at the stop, or at the bar's open if the bar opened beyond it; a target is "
+    "filled at the target. Points are NIFTY index points, not rupees.")
 
 
 def index_outcomes(u1, signals, strategy, cfg, cal):
@@ -300,7 +301,9 @@ def index_outcomes(u1, signals, strategy, cfg, cal):
             if hit_t and hit_s:
                 res = ("AMBIGUOUS", b[0], None, "target and stop both inside the %s bar" % b[0].strftime("%H:%M"))
             elif hit_s:
-                res = ("SL", b[0], stop, None)
+                gap = (b[1] < stop) if ce else (b[1] > stop)          # the bar OPENED beyond the stop
+                res = ("SL", b[0], b[1] if gap else stop,
+                       "gapped through the stop: exit at the bar open %.2f" % b[1] if gap else None)
             elif hit_t:
                 res = ("TARGET", b[0], target, None)
             if res:
@@ -313,7 +316,9 @@ def index_outcomes(u1, signals, strategy, cfg, cal):
                    reason=why, minutes_held=int((when - after[0][0]).total_seconds() // 60))
         if price is not None:
             pts = (price - entry) if ce else (entry - price)
-            row.update(index_points=round(pts, 2), r_multiple=round(pts / risk, 2))
+            row.update(index_points=round(pts, 2), r_multiple=round(pts / risk, 4))
+            if kind == "TIME EXIT":
+                row["time_exit_result"] = "profit" if pts > 0 else "loss" if pts < 0 else "breakeven"
         out.append(row)
     return out
 
@@ -335,49 +340,146 @@ def summarise_outcomes(rows):
             "by_month": by_month}
 
 
-def index_model(rows, cfg, risk_inr=None):
+def index_model(rows, cfg, risk_inr=None, label="INDEX-BASED MODEL"):
     """Performance of the INDEX-BASED model in R (1R = the index distance to the stop) and, ONLY as a
     labelled hypothetical, in rupees with 1R = max_risk_per_trade_inr, before charges and slippage.
-    AMBIGUOUS, INVALID and NO DATA outcomes are excluded (counted separately), never guessed."""
+    AMBIGUOUS, INVALID and NO DATA outcomes are excluded (counted separately), never guessed.
+    Every figure is derived from the per-trade R list in chronological order (entry time)."""
     risk_inr = float(cfg["max_risk_per_trade_inr"] if risk_inr is None else risk_inr)
-    rs = [r for r in sorted(rows, key=lambda x: x["entry_time"] if x.get("entry_time") else x["day"])
-          if r.get("r_multiple") is not None]
-    wins = [r["r_multiple"] for r in rs if r["r_multiple"] > 0]
-    losses = [r["r_multiple"] for r in rs if r["r_multiple"] <= 0]
-    gross_win, gross_loss = round(sum(wins), 2), round(-sum(losses), 2)
-    eq, peak, mdd, run, worst_run, curve = 0.0, 0.0, 0.0, 0, 0, []
+    cap = float(cfg["capital_inr"])
+    rs = sorted((r for r in rows if r.get("r_multiple") is not None), key=lambda x: x.get("entry_time") or x["day"])
+    n = len(rs)
+    R = [r["r_multiple"] for r in rs]
+    wins = [x for x in R if x > 0]
+    losses = [x for x in R if x < 0]
+    flat = [x for x in R if x == 0]
+    gross_win, gross_loss = sum(wins), -sum(losses)
+    net = sum(R)
+
+    def group(kind, res=None):
+        g = [r["r_multiple"] for r in rs if r["outcome"] == kind and (res is None or r.get("time_exit_result") == res)]
+        return {"trades": len(g), "net_r": round(sum(g), 2)}
+    eq, peak, peak_day, mdd, mdd_peak_day, mdd_day, mdd_peak_eq = 0.0, 0.0, None, 0.0, None, None, 0.0
+    run, worst_run, curve = 0, 0, []
     for r in rs:
         eq += r["r_multiple"]
-        peak = max(peak, eq)
-        mdd = max(mdd, peak - eq)
-        run = run + 1 if r["r_multiple"] <= 0 else 0
+        if eq > peak:
+            peak, peak_day = eq, r["day"]
+        if peak - eq > mdd:
+            mdd, mdd_day, mdd_peak_day, mdd_peak_eq = peak - eq, r["day"], peak_day, peak
+        run = run + 1 if r["r_multiple"] < 0 else 0
         worst_run = max(worst_run, run)
-        curve.append([r["day"], round(eq, 2)])
+        curve.append([r["day"], round(eq, 4)])
     by_month = collections.OrderedDict()
     for r in rs:
-        m = by_month.setdefault(r["day"][:7], {"trades": 0, "wins": 0, "losses": 0, "net_r": 0.0})
+        m = by_month.setdefault(r["day"][:7], {"trades": 0, "wins": 0, "losses": 0, "breakeven": 0, "net_r": 0.0,
+                                                "targets": 0, "stops": 0, "time_exits": 0})
         m["trades"] += 1
-        m["wins" if r["r_multiple"] > 0 else "losses"] += 1
-        m["net_r"] = round(m["net_r"] + r["r_multiple"], 2)
+        m["wins" if r["r_multiple"] > 0 else "losses" if r["r_multiple"] < 0 else "breakeven"] += 1
+        m[{"TARGET": "targets", "SL": "stops", "TIME EXIT": "time_exits"}[r["outcome"]]] += 1
+        m["net_r"] += r["r_multiple"]
     for m in by_month.values():
+        m["net_r"] = round(m["net_r"], 2)
         m["hypothetical_inr"] = round(m["net_r"] * risk_inr, 2)
-    n = len(rs)
-    net = round(sum(r["r_multiple"] for r in rs), 2)
-    cap = float(cfg["capital_inr"])
+        m["win_rate_pct"] = round(100.0 * m["wins"] / m["trades"], 1) if m["trades"] else None
+    peak_cap = cap + mdd_peak_eq * risk_inr
     return {
-        "label": "INDEX-BASED MODEL, NOT OPTION P&L (1R = Rs %d of risk; before brokerage, taxes and slippage)" % risk_inr,
-        "trades_counted": n, "wins": len(wins), "losses": len(losses),
-        "excluded": {k: sum(1 for r in rows if r["outcome"] == k) for k in ("AMBIGUOUS", "INVALID", "NO DATA")},
+        "label": "%s, NOT OPTION P&L (1R = Rs %d of risk; before brokerage, taxes and slippage)" % (label, risk_inr),
+        "trades_counted": n, "wins": len(wins), "losses": len(losses), "breakeven": len(flat),
         "win_rate_pct": round(100.0 * len(wins) / n, 1) if n else None,
-        "gross_gain_r": gross_win, "gross_loss_r": gross_loss, "net_r": net,
-        "expectancy_r": round(net / n, 3) if n else None,
-        "profit_factor": round(gross_win / gross_loss, 2) if gross_loss else None,
-        "max_drawdown_r": round(mdd, 2), "max_consecutive_losses": worst_run,
+        "win_rate_formula": "wins / trades counted = %d / %d; a win is any trade with R > 0 (targets plus "
+                            "time exits that closed in profit)" % (len(wins), n),
+        "breakdown": {"target": group("TARGET"), "stop_loss": group("SL"),
+                      "time_exit_profit": group("TIME EXIT", "profit"), "time_exit_loss": group("TIME EXIT", "loss"),
+                      "time_exit_breakeven": group("TIME EXIT", "breakeven")},
+        "excluded": {k: sum(1 for r in rows if r["outcome"] == k) for k in ("AMBIGUOUS", "INVALID", "NO DATA")},
+        "gross_gain_r": round(gross_win, 2), "gross_loss_r": round(gross_loss, 2), "net_r": round(net, 2),
+        "expectancy_r": round(net / n, 4) if n else None,
+        "profit_factor": round(gross_win / gross_loss, 3) if gross_loss else None,
+        "avg_win_r": round(gross_win / len(wins), 3) if wins else None,
+        "avg_loss_r": round(gross_loss / len(losses), 3) if losses else None,
+        "max_drawdown_r": round(mdd, 2), "max_drawdown_peak_day": mdd_peak_day, "max_drawdown_trough_day": mdd_day,
+        "max_consecutive_losses": worst_run,
         "profitable_months": sum(1 for m in by_month.values() if m["net_r"] > 0), "months": len(by_month),
         "hypothetical_inr": {"start": cap, "net": round(net * risk_inr, 2), "end": round(cap + net * risk_inr, 2),
-                             "max_drawdown": round(mdd * risk_inr, 2)},
-        "by_month": by_month, "equity_curve_r": curve,
+                             "gross_gain": round(gross_win * risk_inr, 2), "gross_loss": round(gross_loss * risk_inr, 2),
+                             "max_drawdown": round(mdd * risk_inr, 2),
+                             "max_drawdown_pct_of_peak": round(100.0 * mdd * risk_inr / peak_cap, 2) if peak_cap else None,
+                             "peak_capital_before_drawdown": round(peak_cap, 2),
+                             "formula": "end = start + net R x Rs %d = %.0f + (%.2f x %d) = %.2f" % (
+                                 risk_inr, cap, net, risk_inr, cap + net * risk_inr)},
+        "by_month": by_month, "equity_curve_r": [[d, round(e, 2)] for d, e in curve],
     }
+
+
+def portfolio(rows, cfg, risk_inr=None):
+    """Executable portfolio simulation of the index model with the approved limits applied in time order:
+    at most max_trades_per_day filled entries, max_stop_exits_per_day stop exits (no new entry after the
+    limit), no new entry once the day's net loss reaches max_daily_loss_inr or realised profit reaches
+    daily_profit_stop_inr, one lot open at a time (no entry while another trade is open), and the planned
+    loss at the stop must fit max_risk_per_trade_inr (index model: 1R = that amount, so it always fits).
+    A rejected signal is never counted as a trade."""
+    risk_inr = float(cfg["max_risk_per_trade_inr"] if risk_inr is None else risk_inr)
+    taken, rejected = [], []
+    day_state = {}
+    open_until = None
+    for r in sorted(rows, key=lambda x: x.get("entry_time") or x["day"]):
+        if r.get("r_multiple") is None:
+            rejected.append(dict(r, rejected_because="no resolvable index outcome (%s)" % r["outcome"]))
+            continue
+        d = day_state.setdefault(r["day"], {"entries": 0, "stops": 0, "pnl": 0.0})
+        why = None
+        if d["entries"] >= cfg["max_trades_per_day"]:
+            why = "max %d filled entries a day" % cfg["max_trades_per_day"]
+        elif d["stops"] >= cfg["max_stop_exits_per_day"]:
+            why = "max %d stop exits a day" % cfg["max_stop_exits_per_day"]
+        elif d["pnl"] <= -cfg["max_daily_loss_inr"]:
+            why = "daily net loss limit Rs %d reached" % cfg["max_daily_loss_inr"]
+        elif d["pnl"] >= cfg["daily_profit_stop_inr"]:
+            why = "daily profit stop Rs %d reached" % cfg["daily_profit_stop_inr"]
+        elif open_until and r["entry_time"] < open_until:
+            why = "one lot already open"
+        elif risk_inr > cfg["max_risk_per_trade_inr"]:
+            why = "planned risk above Rs %d" % cfg["max_risk_per_trade_inr"]
+        if why:
+            rejected.append(dict(r, rejected_because=why))
+            continue
+        d["entries"] += 1
+        d["stops"] += 1 if r["outcome"] == "SL" else 0
+        d["pnl"] += r["r_multiple"] * risk_inr
+        open_until = r.get("exit_time")
+        taken.append(r)
+    model = index_model(taken, cfg, risk_inr, label="EXECUTABLE PORTFOLIO (index model, approved limits applied)")
+    reasons = collections.Counter(x["rejected_because"] for x in rejected)
+    return {"model": model, "signals": len(rows), "filled": len(taken), "rejected": len(rejected),
+            "rejected_by_reason": dict(reasons),
+            "limits": {k: cfg[k] for k in ("max_trades_per_day", "max_stop_exits_per_day", "max_daily_loss_inr",
+                                           "daily_profit_stop_inr", "max_risk_per_trade_inr", "max_open_lots",
+                                           "capital_inr")},
+            "rejected_rows": [{k: x.get(k) for k in ("day", "signal_time", "outcome", "rejected_because")}
+                              for x in rejected]}
+
+
+CSV_COLUMNS = ("day", "signal_time", "option_type", "expiry", "entry_time", "entry", "stop", "target", "risk_points",
+               "outcome", "time_exit_result", "exit_time", "exit", "index_points", "r_multiple", "minutes_held",
+               "reason", "portfolio", "hypothetical_inr")
+
+
+def trades_csv(rows, portfolio_doc, risk_inr):
+    """Trade-by-trade audit CSV text (index model; never option prices)."""
+    import csv
+    import io
+    rej = {(x["day"], x["signal_time"]): x["rejected_because"] for x in portfolio_doc.get("rejected_rows") or []}
+    buf = io.StringIO()
+    buf.write("# INDEX-BASED MODEL, NOT OPTION P&L. 1R = Rs %d, before brokerage, taxes and slippage.\n" % risk_inr)
+    w = csv.DictWriter(buf, CSV_COLUMNS, extrasaction="ignore")
+    w.writeheader()
+    for r in sorted(rows, key=lambda x: x.get("entry_time") or x["day"]):
+        why = rej.get((r["day"], r["signal_time"]))
+        out = dict(r, portfolio="rejected: " + why if why else "filled",
+                   hypothetical_inr=None if r.get("r_multiple") is None else round(r["r_multiple"] * risk_inr, 2))
+        w.writerow(out)
+    return buf.getvalue()
 
 
 def daily_limit_check(rows, cfg, risk_inr=None):

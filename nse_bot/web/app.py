@@ -187,6 +187,14 @@ def create_app(env=None, publish=None, github=None, now=clock.now_ist):
     def api_study():
         return jsonify(view.study())
 
+    @app.get("/api/study/trades.csv")
+    def api_study_csv():
+        text = view.study_csv()
+        if text is None:
+            return jsonify({"error": "this study has no trade outcomes yet"}), 404
+        return text, 200, {"Content-Type": "text/csv; charset=utf-8",
+                           "Content-Disposition": "attachment; filename=orb-index-model-trades.csv"}
+
     @app.get("/api/study/chart")
     def api_study_chart():
         day = request.args.get("day", "")

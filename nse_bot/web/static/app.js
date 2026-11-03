@@ -330,23 +330,26 @@ function renderStudy(j) {
   if (!ST.day && j.chart_days && j.chart_days.length) pickDay(j.chart_days[j.chart_days.length - 1]);
   else if (ST.day) sel.value = ST.day;
 }
-function renderOutcomes(j) {
-  var io = j.ORB_index_outcomes || {}, m = io.model || {}, sm = io.summary || {}, t = sm.totals || {};
-  var st = clear($("io-stats")), mo = clear($("io-month"));
-  $("io-note").textContent = String(sm.note || "not in this study file").replace("INDEX-BASED, NOT OPTION P&L. ", "");
-  if (!io.model) { empty(mo, "run the signal-study workflow again to compute outcomes"); return; }
-  stat(st, "Target hits", num(t.TARGET, 0)); stat(st, "SL hits", num(t.SL, 0));
-  stat(st, "Time exits", num(t["TIME EXIT"], 0)); stat(st, "Ambiguous", num(t.AMBIGUOUS, 0));
+function renderModel(m, st, mo) {
+  clear(st); clear(mo);
+  if (!m) { empty(mo, "run the signal-study workflow again to compute outcomes"); return; }
+  var b = m.breakdown || {}, h = m.hypothetical_inr || {};
+  function g(k) { var x = b[k] || {}; return (x.trades === undefined ? "—" : x.trades) + " (" + (x.net_r > 0 ? "+" : "") + (x.net_r === undefined ? "—" : x.net_r) + "R)"; }
+  stat(st, "Start → end capital", rs(h.start) + " → " + rs(h.end), sign(h.net));
+  stat(st, "Net profit / loss", rs(h.net) + " (" + (m.net_r > 0 ? "+" : "") + m.net_r + "R)", sign(h.net));
+  stat(st, "Target hits", g("target")); stat(st, "SL hits", g("stop_loss"));
+  stat(st, "Time exits in profit", g("time_exit_profit")); stat(st, "Time exits at a loss", g("time_exit_loss"));
+  stat(st, "Time exits at breakeven", g("time_exit_breakeven")); stat(st, "Trades counted", m.trades_counted);
   stat(st, "Win rate", m.win_rate_pct === null ? "—" : m.win_rate_pct + "%");
   stat(st, "Profit factor", m.profit_factor === null ? "—" : m.profit_factor);
-  stat(st, "Net (R)", (m.net_r > 0 ? "+" : "") + m.net_r + "R", sign(m.net_r));
-  stat(st, "Expectancy", m.expectancy_r + "R / trade", sign(m.expectancy_r));
-  stat(st, "Max drawdown", m.max_drawdown_r + "R"); stat(st, "Worst losing streak", m.max_consecutive_losses);
-  var h = m.hypothetical_inr || {};
-  stat(st, "Index model ₹ (hypothetical)", rs(h.start) + " → " + rs(h.end), sign(h.net));
-  stat(st, "Index model max DD ₹", rs(h.max_drawdown));
+  stat(st, "Expectancy", m.expectancy_r + "R = " + rs(m.expectancy_r * 500) + " / trade", sign(m.expectancy_r));
+  stat(st, "Gross gain / loss", rs(h.gross_gain) + " / " + rs(-h.gross_loss));
+  stat(st, "Max drawdown", rs(h.max_drawdown) + " (" + m.max_drawdown_r + "R, " + h.max_drawdown_pct_of_peak + "% of peak)");
+  stat(st, "Drawdown peak → trough", (m.max_drawdown_peak_day || "start") + " → " + (m.max_drawdown_trough_day || "—"));
+  stat(st, "Worst losing streak", m.max_consecutive_losses);
+  stat(st, "Profitable months", m.profitable_months + " of " + m.months);
   mo.appendChild(el("div", "small warn", m.label || ""));
-  // monthly net R bars (diverging around 0)
+  mo.appendChild(el("div", "small muted", "Win rate: " + (m.win_rate_formula || "") + ". Profit factor = gross gain / gross loss = " + m.gross_gain_r + "R / " + m.gross_loss_r + "R. Expectancy = net R / trades = " + m.net_r + " / " + m.trades_counted + ". " + (h.formula || "")));
   var bm = m.by_month || {}, keys = Object.keys(bm).sort();
   var svg = sv("svg", { viewBox: "0 0 320 150", "class": "bars", "aria-label": "Net R per month" }, mo);
   var mx = 1; keys.forEach(function (k) { mx = Math.max(mx, Math.abs(bm[k].net_r)); });
@@ -354,20 +357,19 @@ function renderOutcomes(j) {
   sv("line", { x1: 24, x2: W, y1: z, y2: z, "class": "grid" }, svg);
   var t1 = sv("text", { x: 0, y: top + 6 }, svg); t1.textContent = "+" + Math.round(mx) + "R";
   var t2 = sv("text", { x: 0, y: H - bot }, svg); t2.textContent = "-" + Math.round(mx) + "R";
-  var tip = el("div", "small muted", "Tap a month for its numbers."); 
+  var tip = el("div", "small muted", "Tap a month for its numbers.");
   keys.forEach(function (k, i) {
     var v = bm[k].net_r, hgt = Math.abs(v) / mx * (H - top - bot) / 2, x = 24 + i * gw + gw * 0.2;
     sv("rect", { x: x, y: v >= 0 ? z - hgt : z, width: Math.max(2, gw * 0.6), height: Math.max(hgt, 1), rx: 2, "class": v >= 0 ? "c-up" : "c-dn" }, svg);
     var hit = sv("rect", { x: 24 + i * gw, y: 0, width: gw, height: H, fill: "transparent" }, svg);
-    hit.addEventListener("click", function () { tip.textContent = k + ": " + bm[k].trades + " trades, " + bm[k].wins + " wins, " + bm[k].losses + " losses, net " + v + "R (index model " + rs(bm[k].hypothetical_inr) + ")"; });
+    hit.addEventListener("click", function () { tip.textContent = k + ": " + bm[k].trades + " trades, " + bm[k].targets + " targets, " + bm[k].stops + " SL, " + bm[k].time_exits + " time exits, net " + v + "R (" + rs(bm[k].hypothetical_inr) + ")"; });
     if (keys.length <= 12 || i % 2 === 0) { var tt = sv("text", { x: 24 + i * gw + gw / 2, y: H - 4, "text-anchor": "middle" }, svg); tt.textContent = "JanFebMarAprMayJunJulAugSepOctNovDec".substr((+k.slice(5, 7) - 1) * 3, 3); }
   });
   mo.appendChild(tip);
-  table(mo, ["Month", "Trades", "W", "L", "Net R", "Index ₹"], keys.slice().reverse().map(function (k) { var b = bm[k]; return [k, b.trades, b.wins, b.losses, b.net_r, rs(b.hypothetical_inr)]; }));
-  // equity curve in R
+  table(mo, ["Month", "Trades", "Tgt", "SL", "Time", "Win%", "Net R", "₹"], keys.slice().reverse().map(function (k) { var x = bm[k]; return [k, x.trades, x.targets, x.stops, x.time_exits, x.win_rate_pct, x.net_r, rs(x.hypothetical_inr)]; }));
   var cv = m.equity_curve_r || [];
   if (cv.length > 1) {
-    mo.appendChild(el("div", "label", "Cumulative R (index model), trade by trade"));
+    mo.appendChild(el("div", "label", "Cumulative R, trade by trade (0 = ₹20,000)"));
     var es = sv("svg", { viewBox: "0 0 320 100", "class": "spark", preserveAspectRatio: "none" }, mo);
     var lo = 0, hi = 0; cv.forEach(function (p) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); });
     var sp = (hi - lo) || 1, d = "";
@@ -375,10 +377,19 @@ function renderOutcomes(j) {
     sv("line", { x1: 0, x2: 320, y1: 96 - (0 - lo) / sp * 92, y2: 96 - (0 - lo) / sp * 92, "class": "grid" }, es);
     sv("path", { d: d }, es);
   }
-  var dl = io.daily_limits || {}, rf = io.risk_fit || {};
-  mo.appendChild(el("div", "small muted", "Daily limits: " + (dl.blocked_by_daily_limits === 0 ? "would have blocked 0 trades. " : "see audit. ") + (dl.why || "")));
-  if (rf.max_premium_for_one_lot) mo.appendChild(el("div", "small warn", "₹500 risk per trade: one lot (" + rf.lot_size + " units, 20% premium stop, charges, slippage) fits only when the option premium is at most ₹" + num(rf.max_premium_for_one_lot) + ". " + rf.note));
-  else if (rf.error) mo.appendChild(el("div", "small muted", "₹500 risk check: " + rf.error));
+}
+function renderOutcomes(j) {
+  var io = j.ORB_index_outcomes || {}, sm = io.summary || {}, pf = io.portfolio;
+  $("io-note").textContent = String(sm.note || "not in this study file").replace("INDEX-BASED, NOT OPTION P&L. ", "");
+  renderModel(io.model, $("io-stats"), $("io-month"));
+  var pn = clear($("pf-note"));
+  if (!pf) { empty(pn, "not in this study file: run the signal-study workflow again"); clear($("pf-stats")); clear($("pf-month")); return; }
+  var L = pf.limits || {};
+  pn.appendChild(el("div", "", "Signals " + pf.signals + " · filled " + pf.filled + " · rejected " + pf.rejected + (pf.rejected ? " (" + Object.keys(pf.rejected_by_reason).map(function (k) { return k + ": " + pf.rejected_by_reason[k]; }).join(", ") + ")" : "") + "."));
+  pn.appendChild(el("div", "muted", "Applied in time order: max " + L.max_trades_per_day + " entries and " + L.max_stop_exits_per_day + " SL exits a day, stop at " + rs(-L.max_daily_loss_inr) + " day loss or " + rs(L.daily_profit_stop_inr) + " realised profit, " + L.max_open_lots + " lot at a time, " + rs(L.max_risk_per_trade_inr) + " planned risk per trade (= 1R here). Rejected signals are not trades."));
+  var rf = io.risk_fit || {};
+  if (rf.max_premium_for_one_lot) pn.appendChild(el("div", "warn", "Real options: one lot (" + rf.lot_size + " units) fits the " + rs(L.max_risk_per_trade_inr) + " rule only if the premium is ₹" + num(rf.max_premium_for_one_lot) + " or less. Historical premiums are unavailable, so this cannot be applied to past signals."));
+  renderModel(pf.model, $("pf-stats"), $("pf-month"));
 }
 function renderOptionAudit(j) {
   var oa = j.option_audit || {}, s = clear($("opt-audit-sum")), l = clear($("opt-audit"));

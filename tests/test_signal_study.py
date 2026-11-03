@@ -102,6 +102,10 @@ class IndexOutcomes(unittest.TestCase):
         self.assertEqual((r["outcome"], r["entry"], r["target"], r["r_multiple"]), ("TARGET", 25040, 25140.0, 2.5))
         r = self.run_([(25040, 25041, 24999, 25000)])
         self.assertEqual((r["outcome"], r["index_points"], r["r_multiple"]), ("SL", -40.0, -1.0))
+        r = self.run_([(25040, 25041, 25039, 25040), (24990, 24995, 24980, 24985)])     # opens below the stop
+        self.assertEqual((r["outcome"], r["exit"], r["r_multiple"]), ("SL", 24990, -1.25))
+        r = self.run_([(25040, 25050, 25030, 25040)] * 3)
+        self.assertEqual(r["time_exit_result"], "breakeven")
         r = self.run_([(25040, 25141, 24999, 25000)])
         self.assertEqual((r["outcome"], r["exit"]), ("AMBIGUOUS", None))
         r = self.run_([(25040, 25050, 25030, 25045)] * 3)
@@ -137,7 +141,10 @@ class IndexModel(unittest.TestCase):
         self.assertEqual((m["trades_counted"], m["wins"], m["losses"], m["excluded"]["AMBIGUOUS"]), (4, 2, 2, 1))
         self.assertEqual((m["gross_gain_r"], m["gross_loss_r"], m["net_r"], m["profit_factor"]), (2.9, 2.0, 0.9, 1.45))
         self.assertEqual((m["max_drawdown_r"], m["max_consecutive_losses"], m["win_rate_pct"]), (2.0, 2, 50.0))
-        self.assertEqual(m["hypothetical_inr"], {"start": 20000.0, "net": 450.0, "end": 20450.0, "max_drawdown": 1000.0})
+        h = m["hypothetical_inr"]
+        self.assertEqual((h["start"], h["net"], h["end"], h["max_drawdown"]), (20000.0, 450.0, 20450.0, 1000.0))
+        self.assertEqual((h["gross_gain"], h["gross_loss"], h["max_drawdown_pct_of_peak"]), (1450.0, 1000.0, 5.0))
+        self.assertEqual((m["max_drawdown_peak_day"], m["max_drawdown_trough_day"]), (None, "2026-01-05"))
         self.assertIn("NOT OPTION P&L", m["label"])
         self.assertEqual(m["by_month"]["2026-01"]["net_r"], 0.5)
 
@@ -160,6 +167,100 @@ class IndexModel(unittest.TestCase):
         ok = budget.size_at_fills(cfg, costs, c, p - 0.5, round((p - 0.5) * 0.8, 2), dt.date(2026, 11, 2), 1000)["lots"]
         no = budget.size_at_fills(cfg, costs, c, p + 1, round((p + 1) * 0.8, 2), dt.date(2026, 11, 2), 1000)["lots"]
         self.assertEqual((ok >= 1, no), (True, 0))
+
+
+class IndependentCheck(unittest.TestCase):
+    """Every metric recomputed here from the raw R list with separate, plain code."""
+
+    def rows(self, n=400, seed=11):
+        import random
+        rnd = random.Random(seed)
+        out, d = [], dt.date(2025, 11, 3)
+        for i in range(n):
+            kind = rnd.choice(["TARGET", "SL", "SL", "TIME EXIT", "TIME EXIT"])
+            r = 2.5 if kind == "TARGET" else -1.0 if kind == "SL" else round(rnd.uniform(-0.9, 2.4), 4)
+            if kind == "TIME EXIT" and rnd.random() < 0.05:
+                r = 0.0
+            row = {"day": (d + dt.timedelta(days=i)).isoformat(), "outcome": kind, "r_multiple": r,
+                   "entry_time": (d + dt.timedelta(days=i)).isoformat() + "T10:00:00+05:30"}
+            if kind == "TIME EXIT":
+                row["time_exit_result"] = "profit" if r > 0 else "loss" if r < 0 else "breakeven"
+            out.append(row)
+        return out
+
+    def test_all_metrics(self):
+        rows = self.rows()
+        cfg = synth.cfg("/tmp/x", capital_inr=20000, max_risk_per_trade_inr=500)
+        m = SS.index_model(rows, cfg)
+        R = [r["r_multiple"] for r in rows]
+        w = [x for x in R if x > 0]
+        lo = [x for x in R if x < 0]
+        self.assertEqual((m["wins"], m["losses"], m["breakeven"]), (len(w), len(lo), R.count(0.0)))
+        self.assertEqual(m["wins"] + m["losses"] + m["breakeven"], len(R))
+        self.assertAlmostEqual(m["win_rate_pct"], round(100.0 * len(w) / len(R), 1))
+        self.assertAlmostEqual(m["gross_gain_r"], round(sum(w), 2))
+        self.assertAlmostEqual(m["gross_loss_r"], round(-sum(lo), 2))
+        self.assertAlmostEqual(m["net_r"], round(sum(R), 2))
+        self.assertAlmostEqual(m["profit_factor"], round(sum(w) / -sum(lo), 3))
+        self.assertAlmostEqual(m["expectancy_r"], round(sum(R) / len(R), 4))
+        b = m["breakdown"]
+        self.assertEqual(sum(v["trades"] for v in b.values()), len(R))
+        self.assertAlmostEqual(sum(v["net_r"] for v in b.values()), sum(R), places=1)
+        # drawdown: brute force over every (peak, later trough) pair of the cumulative curve, starting at 0
+        cum = [0.0]
+        for x in R:
+            cum.append(cum[-1] + x)
+        dd = max(cum[i] - cum[j] for i in range(len(cum)) for j in range(i, len(cum)))
+        self.assertAlmostEqual(m["max_drawdown_r"], round(dd, 2))
+        self.assertAlmostEqual(m["hypothetical_inr"]["end"], round(20000 + sum(R) * 500, 2))
+        streak = best = 0
+        for x in R:
+            streak = streak + 1 if x < 0 else 0
+            best = max(best, streak)
+        self.assertEqual(m["max_consecutive_losses"], best)
+        self.assertAlmostEqual(sum(v["net_r"] for v in m["by_month"].values()), sum(R), places=1)
+
+
+class Portfolio(unittest.TestCase):
+    def cfg(self):
+        return synth.cfg("/tmp/x", capital_inr=20000, max_risk_per_trade_inr=500, max_trades_per_day=5,
+                         max_stop_exits_per_day=2, max_daily_loss_inr=1000, daily_profit_stop_inr=2000, max_open_lots=1)
+
+    def row(self, day, hh, outcome, r, exit_hh):
+        return {"day": day, "signal_time": day + "T%s:00+05:30" % hh, "outcome": outcome, "r_multiple": r,
+                "entry_time": day + "T%s:00+05:30" % hh, "exit_time": day + "T%s:00+05:30" % exit_hh}
+
+    def test_limits_applied_in_order_and_rejections_not_counted(self):
+        d = "2026-01-02"
+        rows = [self.row(d, "09:40", "SL", -1.0, "09:50"),
+                self.row(d, "09:45", "TARGET", 2.5, "10:30"),     # overlaps the open trade: one lot
+                self.row(d, "10:00", "SL", -1.0, "10:10"),        # 2nd stop -> day loss Rs 1000
+                self.row(d, "10:20", "TARGET", 2.5, "11:00"),     # stop limit / loss limit reached
+                self.row("2026-01-05", "09:40", "AMBIGUOUS", None, "09:41")]
+        p = SS.portfolio(rows, self.cfg())
+        self.assertEqual((p["signals"], p["filled"], p["rejected"]), (5, 2, 3))
+        self.assertEqual(p["model"]["trades_counted"], 2)
+        self.assertEqual(p["model"]["net_r"], -2.0)
+        self.assertEqual(p["rejected_by_reason"]["one lot already open"], 1)
+        self.assertEqual(p["rejected_by_reason"]["max 2 stop exits a day"], 1)
+
+    def test_profit_stop_and_entry_cap(self):
+        d = "2026-01-02"
+        rows = [self.row(d, "09:%02d" % (30 + 2 * i), "TARGET", 2.5, "09:%02d" % (31 + 2 * i)) for i in range(3)]
+        p = SS.portfolio(rows, self.cfg())
+        self.assertEqual(p["filled"], 2)                    # +Rs 2,500 >= Rs 2,000 profit stop after two
+        self.assertIn("daily profit stop", list(p["rejected_by_reason"])[0])
+        rows = [self.row(d, "09:%02d" % (30 + 2 * i), "TIME EXIT", 0.1, "09:%02d" % (31 + 2 * i)) for i in range(7)]
+        self.assertEqual(SS.portfolio(rows, self.cfg())["filled"], 5)
+
+    def test_csv_marks_rejections_and_label(self):
+        d = "2026-01-02"
+        rows = [self.row(d, "09:40", "SL", -1.0, "09:50"), self.row(d, "09:45", "TARGET", 2.5, "10:30")]
+        p = SS.portfolio(rows, self.cfg())
+        text = SS.trades_csv(rows, p, 500)
+        self.assertTrue(text.startswith("# INDEX-BASED MODEL, NOT OPTION P&L"))
+        self.assertIn("rejected: one lot already open", text)
+        self.assertIn(",-500.0", text)
 
 
 class Contracts(unittest.TestCase):

@@ -187,6 +187,26 @@ class Web(unittest.TestCase):
         self.assertEqual((ch["bars"], len(ch["signals"])), (bars, 1))
         self.assertFalse(self.c.get("/api/study/chart?day=2026-10-30").get_json()["available"])
         self.assertEqual(self.c.get("/api/study/chart?day=../../x").status_code, 400)
+        self.assertEqual(self.c.get("/api/study/trades.csv").status_code, 404)    # no outcomes in this file
+
+    def test_trade_csv_download_needs_sign_in(self):
+        from nse_bot.backtest import signal_study as SS
+        study = os.path.join(self.dir, "study.json")
+        rows = [{"day": "2026-01-02", "signal_time": "2026-01-02T09:40:00+05:30", "outcome": "SL", "r_multiple": -1.0,
+                 "entry_time": "2026-01-02T09:45:00+05:30", "exit_time": "2026-01-02T09:50:00+05:30"}]
+        cfg = synth.cfg(self.dir, capital_inr=20000, max_risk_per_trade_inr=500, max_trades_per_day=5,
+                        max_stop_exits_per_day=2, max_daily_loss_inr=1000, daily_profit_stop_inr=2000, max_open_lots=1)
+        state.write_json(study, {"ORB_index_outcomes": {"rows": rows, "portfolio": SS.portfolio(rows, cfg)},
+                                 "ORB": {"signals": []}, "Sweep": {"signals": []}, "charts": {}})
+        app = webapp.create_app(dict(self.env, DASH_STUDY=study), publish=lambda d: True,
+                                github=lambda *a, **k: (204, None), now=NOW)
+        c = app.test_client()
+        self.assertEqual(c.get("/api/study/trades.csv").status_code, 401)
+        c.get("/login?k=" + KEY)
+        r = c.get("/api/study/trades.csv")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("attachment", r.headers["Content-Disposition"])
+        self.assertIn("NOT OPTION P&L", r.get_data(as_text=True))
 
     def test_no_study_file_says_so(self):
         self.login()

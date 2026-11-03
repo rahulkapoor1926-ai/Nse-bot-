@@ -15,6 +15,10 @@ on:
         description: "Also try FYERS 5-minute index bars back this many days (ORB only; max 2 years)"
         required: false
         default: "730"
+      option_audit:
+        description: "ORB signals whose option contract to check on FYERS (one call each; 0 = reuse the last check)"
+        required: false
+        default: "0"
 
 permissions:
   contents: read
@@ -63,14 +67,23 @@ jobs:
           print("FYERS login ok (token masked); refresh token received: %s" % info["refresh_token_received"])
           PY
 
+      - name: Restore the previous study (reuse its option contract check)
+        uses: actions/cache/restore@v4
+        with:
+          path: state/signal-study
+          key: signal-study-${{ github.run_id }}
+          restore-keys: signal-study-
+
       - name: Run the study
         env:
           DAYS_INPUT: ${{ github.event.inputs.days }}
           OLDER_INPUT: ${{ github.event.inputs.older_days }}
+          AUDIT_INPUT: ${{ github.event.inputs.option_audit }}
         run: |
-          python3 -m nse_bot --config config/paper.json signal-study --refresh-master \
+          [ -f state/signal-study/study.json ] && cp state/signal-study/study.json prev-study.json || true
+          python3 -m nse_bot --config config/paper.json signal-study --refresh-master --reuse-option-audit prev-study.json \
             --out state/signal-study --days "${DAYS_INPUT:-730}" --older-days "${OLDER_INPUT:-730}" \
-            --max-calls-per-minute 20 --max-calls-per-second 2 --max-calls-per-day 450 --option-audit 228
+            --max-calls-per-minute 20 --max-calls-per-second 2 --max-calls-per-day 450 --option-audit "${AUDIT_INPUT:-0}"
 
       - name: Signals found (first 40 of each)
         if: always()

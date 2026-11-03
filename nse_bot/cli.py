@@ -564,7 +564,8 @@ def cmd_signal_study(a):
         doc["Sweep"] = {"signals": [], "summary": None, "not_evaluable": {"no index-future 1m history": cover(u1)["sessions"]}}
     oc = SS.index_outcomes(u1 + u5, doc["ORB"]["signals"], strategies["orb"], cfg, cal)
     doc["ORB_index_outcomes"] = {"summary": SS.summarise_outcomes(oc), "rows": oc,
-                                 "model": SS.index_model(oc, cfg), "daily_limits": SS.daily_limit_check(oc, cfg)}
+                                 "model": SS.index_model(oc, cfg, label="RAW SIGNAL OUTCOMES (no portfolio limits)"),
+                                 "portfolio": SS.portfolio(oc, cfg), "daily_limits": SS.daily_limit_check(oc, cfg)}
     try:
         from . import scanner
         ex = scanner.choose_expiry(m, cal, "NIFTY", end.date(), cfg["min_days_to_expiry"])
@@ -574,6 +575,14 @@ def cmd_signal_study(a):
     except Exception as e:                                                  # noqa: BLE001
         doc["ORB_index_outcomes"]["risk_fit"] = {"error": str(e)[:160]}
     doc["option_audit"] = _option_audit(md, doc["ORB"]["signals"], strategies["orb"], cal, a.option_audit)
+    if not a.option_audit and a.reuse_option_audit and os.path.exists(a.reuse_option_audit):
+        try:
+            with open(a.reuse_option_audit, encoding="utf-8") as fh:
+                prev = json.load(fh).get("option_audit")
+            if prev and prev.get("requested"):
+                doc["option_audit"] = dict(prev, reused_from=json.load(open(a.reuse_option_audit)).get("generated"))
+        except (OSError, ValueError):
+            pass
     doc["charts"] = SS.charts(u1, doc["ORB"]["signals"] + doc["Sweep"]["signals"])
     doc["charts"].update(SS.charts(u5, doc["ORB"]["signals"], native_minutes=5))
     doc["api_calls"] = md.calls_made
@@ -587,6 +596,8 @@ def cmd_signal_study(a):
     io = doc["ORB_index_outcomes"]
     print("INDEX_OUTCOMES %s" % json.dumps(io["summary"], default=str))
     print("INDEX_MODEL %s" % json.dumps({k: v for k, v in io["model"].items() if k != "equity_curve_r"}, default=str))
+    print("PORTFOLIO %s" % json.dumps({k: v for k, v in io["portfolio"].items() if k != "rejected_rows"} | {
+        "model": {k: v for k, v in io["portfolio"]["model"].items() if k not in ("equity_curve_r", "by_month")}}, default=str))
     print("DAILY_LIMITS %s" % json.dumps(io["daily_limits"]))
     print("RISK_FIT %s" % json.dumps(io.get("risk_fit"), default=str))
     brief = {k: doc[k] for k in ("requested", "index_daily", "calendar_added", "coverage", "api_calls", "note", "options_pnl", "fetch_audit")}
@@ -682,6 +693,8 @@ def build_parser():
                    help="also try FYERS 5-minute index bars back this many days, before the 1-minute history (ORB only)")
     s.add_argument("--option-audit", type=int, default=0,
                    help="check FYERS history for the option contract of up to this many ORB signals (one call each)")
+    s.add_argument("--reuse-option-audit", help="keep the option contract check from this earlier study.json "
+                                                "when --option-audit is 0 (saves FYERS calls)")
     s.add_argument("--orb-strategy", default="config/strategies/orb15.example.json")
     s.add_argument("--sweep-strategy", default="config/strategies/sweep.example.json")
     s.add_argument("--max-calls-per-minute", type=int, default=20)

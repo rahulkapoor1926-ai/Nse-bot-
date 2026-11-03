@@ -232,6 +232,16 @@ class View(object):
         out["option_audit"] = doc.get("option_audit")
         return out
 
+    def study_csv(self):
+        """Trade-by-trade audit CSV of the ORB index model (raw outcomes, marked filled/rejected by the
+        portfolio simulation). None when the study has no outcomes."""
+        doc = self._study()
+        io_ = (doc or {}).get("ORB_index_outcomes") if doc and "error" not in doc else None
+        if not io_ or "rows" not in io_:
+            return None
+        from ..backtest import signal_study as SS
+        return SS.trades_csv(io_["rows"], io_.get("portfolio") or {}, self.cfg["max_risk_per_trade_inr"])
+
     def study_chart(self, day):
         doc = self._study()
         if not doc or "error" in doc:
