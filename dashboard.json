@@ -1,8 +1,8 @@
 {
- "url": "https://casting-kate-abroad-requesting.trycloudflare.com",
+ "url": "https://pregnant-programmer-subjective-implies.trycloudflare.com",
  "up_until_ist": "15:35",
- "run_id": "41586822282",
- "started_at": "2026-11-03T11:27:56",
+ "run_id": "41590764270",
+ "started_at": "2026-11-03T12:06:34",
  "signed_in_checks": {
   "/": "200",
   "/static/app.js": "200",
@@ -18,21 +18,21 @@
  },
  "study": {
   "available": true,
-  "generated": "2026-11-02T23:06:06.889193+05:30",
+  "generated": "2026-11-03T11:40:15.049524+05:30",
   "coverage": {
    "future": {
-    "bars": 93265,
+    "bars": 93410,
     "first": "2025-11-03",
-    "last": "2026-11-02",
+    "last": "2026-11-03",
     "note": null,
-    "sessions": 247,
+    "sessions": 248,
     "symbol": "NSE:NIFTY26NOVFUT"
    },
    "index": {
-    "bars": 92642,
+    "bars": 92787,
     "first": "2025-11-03",
-    "last": "2026-11-02",
-    "sessions": 247
+    "last": "2026-11-03",
+    "sessions": 248
    },
    "index_5m_older": {
     "bars": 0,
@@ -41,9 +41,123 @@
     "sessions": 0
    }
   },
-  "ORB_signals": 228,
+  "ORB_signals": 229,
   "Sweep_signals": 0,
   "options_pnl": "NOT AVAILABLE"
+ },
+ "live_feed": {
+  "available": true,
+  "reason": null,
+  "websocket": {
+   "connected": true,
+   "file_age_s": 0.3,
+   "last_event": {
+    "detail": {
+     "code": 200,
+     "message": "Subscribed",
+     "s": "ok",
+     "type": "sub"
+    },
+    "kind": "message",
+    "time": "2026-11-03T12:06:02+05:30"
+   },
+   "running": true,
+   "subscribed": 7,
+   "ticks_received": 517,
+   "written_at": "2026-11-03T12:06:34+05:30"
+  },
+  "spot": 23701.6,
+  "spot_source": "WebSocket",
+  "spot_time": "2026-11-03T12:06:33+05:30",
+  "spot_age_s": 1.3,
+  "spot_status": "OK",
+  "options": 6,
+  "options_by_source": {
+   "WebSocket": 6
+  },
+  "options_by_status": {
+   "OK": 6
+  },
+  "option_quotes": [
+   {
+    "symbol": "NSE:NIFTY26N0323700CE",
+    "moneyness": "ATM",
+    "ltp": 46.8,
+    "bid": 46.8,
+    "ask": 46.95,
+    "volume": 818240540,
+    "oi": null,
+    "quote_time": "2026-11-03T12:06:33+05:30",
+    "age_s": 1.3,
+    "source": "WebSocket",
+    "status": "OK"
+   },
+   {
+    "symbol": "NSE:NIFTY26N0323650CE",
+    "moneyness": "ITM1",
+    "ltp": 75.3,
+    "bid": 75.05,
+    "ask": 75.25,
+    "volume": 726393395,
+    "oi": null,
+    "quote_time": "2026-11-03T12:06:33+05:30",
+    "age_s": 1.3,
+    "source": "WebSocket",
+    "status": "OK"
+   },
+   {
+    "symbol": "NSE:NIFTY26N0323600CE",
+    "moneyness": "ITM2",
+    "ltp": 112.15,
+    "bid": 111.85,
+    "ask": 112.25,
+    "volume": 694267925,
+    "oi": null,
+    "quote_time": "2026-11-03T12:06:33+05:30",
+    "age_s": 1.3,
+    "source": "WebSocket",
+    "status": "OK"
+   },
+   {
+    "symbol": "NSE:NIFTY26N0323700PE",
+    "moneyness": "ATM",
+    "ltp": 56.0,
+    "bid": 56.0,
+    "ask": 56.15,
+    "volume": 289580980,
+    "oi": null,
+    "quote_time": "2026-11-03T12:06:33+05:30",
+    "age_s": 1.3,
+    "source": "WebSocket",
+    "status": "OK"
+   },
+   {
+    "symbol": "NSE:NIFTY26N0323750PE",
+    "moneyness": "ITM1",
+    "ltp": 86.0,
+    "bid": 86.0,
+    "ask": 86.25,
+    "volume": 69349540,
+    "oi": null,
+    "quote_time": "2026-11-03T12:06:33+05:30",
+    "age_s": 1.3,
+    "source": "WebSocket",
+    "status": "OK"
+   },
+   {
+    "symbol": "NSE:NIFTY26N0323800PE",
+    "moneyness": "ITM2",
+    "ltp": 123.65,
+    "bid": 123.55,
+    "ask": 123.9,
+    "volume": 53907750,
+    "oi": null,
+    "quote_time": "2026-11-03T12:06:33+05:30",
+    "age_s": 1.3,
+    "source": "WebSocket",
+    "status": "OK"
+   }
+  ]
  },
  "sign_in_key": "sent to Telegram only"
 }
