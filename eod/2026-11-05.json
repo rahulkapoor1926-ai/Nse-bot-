@@ -1,0 +1,222 @@
+{
+  "atm_strike": 24550.0,
+  "contracts": [
+    {
+      "close": 156.15,
+      "expiry": "2026-11-09",
+      "high": 190.65,
+      "lot_size": 65.0,
+      "low": 54.95,
+      "moneyness": "ATM",
+      "oi": 4294095.0,
+      "oi_change": 2677935.0,
+      "open": 64.95,
+      "option_type": "CE",
+      "premium_per_lot": 10149.75,
+      "settle": 156.15,
+      "strike": 24550.0,
+      "symbol": "NIFTY26N0924550CE",
+      "traded_today": true,
+      "trades": 1023447.0,
+      "underlying": 24536.6,
+      "volume": 1878923.0
+    },
+    {
+      "close": 180.3,
+      "expiry": "2026-11-09",
+      "high": 219.65,
+      "lot_size": 65.0,
+      "low": 68.0,
+      "moneyness": "ITM",
+      "oi": 5800275.0,
+      "oi_change": -3533140.0,
+      "open": 74.9,
+      "option_type": "CE",
+      "premium_per_lot": 11719.5,
+      "settle": 180.3,
+      "strike": 24500.0,
+      "symbol": "NIFTY26N0924500CE",
+      "traded_today": true,
+      "trades": 1849521.0,
+      "underlying": 24536.6,
+      "volume": 3874489.0
+    },
+    {
+      "close": 208.2,
+      "expiry": "2026-11-09",
+      "high": 251.65,
+      "lot_size": 65.0,
+      "low": 82.85,
+      "moneyness": "ITM",
+      "oi": 1667055.0,
+      "oi_change": 448760.0,
+      "open": 96.1,
+      "option_type": "CE",
+      "premium_per_lot": 13533.0,
+      "settle": 208.2,
+      "strike": 24450.0,
+      "symbol": "NIFTY26N0924450CE",
+      "traded_today": true,
+      "trades": 1100261.0,
+      "underlying": 24536.6,
+      "volume": 1944446.0
+    },
+    {
+      "close": 160.4,
+      "expiry": "2026-11-09",
+      "high": 337.8,
+      "lot_size": 65.0,
+      "low": 139.25,
+      "moneyness": "ATM",
+      "oi": 2999295.0,
+      "oi_change": 2997800.0,
+      "open": 304.6,
+      "option_type": "PE",
+      "premium_per_lot": 10426.0,
+      "settle": 160.4,
+      "strike": 24550.0,
+      "symbol": "NIFTY26N0924550PE",
+      "traded_today": true,
+      "trades": 414014.0,
+      "underlying": 24536.6,
+      "volume": 645062.0
+    },
+    {
+      "close": 188.25,
+      "expiry": "2026-11-09",
+      "high": 376.8,
+      "lot_size": 65.0,
+      "low": 163.0,
+      "moneyness": "ITM",
+      "oi": 1972490.0,
+      "oi_change": 1962870.0,
+      "open": 369.9,
+      "option_type": "PE",
+      "premium_per_lot": 12236.25,
+      "settle": 188.25,
+      "strike": 24600.0,
+      "symbol": "NIFTY26N0924600PE",
+      "traded_today": true,
+      "trades": 337266.0,
+      "underlying": 24536.6,
+      "volume": 544761.0
+    },
+    {
+      "close": 217.75,
+      "expiry": "2026-11-09",
+      "high": 416.0,
+      "lot_size": 65.0,
+      "low": 188.65,
+      "moneyness": "ITM",
+      "oi": 536705.0,
+      "oi_change": 536705.0,
+      "open": 415.95,
+      "option_type": "PE",
+      "premium_per_lot": 14153.75,
+      "settle": 217.75,
+      "strike": 24650.0,
+      "symbol": "NIFTY26N0924650PE",
+      "traded_today": true,
+      "trades": 69793.0,
+      "underlying": 24536.6,
+      "volume": 100869.0
+    }
+  ],
+  "daily_sweep": {
+    "evidence": {
+      "day": {
+        "close": 24536.6,
+        "date": "2026-11-05",
+        "high": 24579.9,
+        "low": 24296.3,
+        "open": 24378.05
+      },
+      "previous_day": {
+        "close": 23960.6,
+        "date": "2026-11-04",
+        "high": 23960.6,
+        "low": 23696.15,
+        "open": 23742.25
+      }
+    },
+    "found": false,
+    "note": "daily candles only; intraday confirmation (BOS/CHoCH, FVG, VWAP) needs intraday data, which these files do not have",
+    "sweeps": []
+  },
+  "date": "2026-11-05",
+  "expiry": "2026-11-09",
+  "future": {
+    "basis": 51.4,
+    "close": 24588.0,
+    "expiry": "2026-11-23",
+    "high": 24641.6,
+    "lot_size": 65.0,
+    "low": 24311.0,
+    "oi": 12641590.0,
+    "oi_change": -840125.0,
+    "open": 24320.0,
+    "settle": 24588.0,
+    "status": "ok",
+    "symbol": "NIFTY26NOVFUT",
+    "trades": 65524.0,
+    "underlying": 24536.6,
+    "volume": 99930.0
+  },
+  "generated_for": "NIFTY",
+  "history_gaps": [],
+  "history_sessions": 40,
+  "index": {
+    "close": 24536.6,
+    "date": "2026-11-05",
+    "high": 24579.9,
+    "low": 24296.3,
+    "open": 24378.05
+  },
+  "label": "End-of-day data from NSE's public files. Analysis only: no trades were simulated, because these files have no bid/ask prices.",
+  "missing_fields": [
+    "bid/ask quotes",
+    "implied volatility",
+    "Greeks (delta, gamma, theta, vega)",
+    "intraday candles (1m to 1h)",
+    "intraday futures volume and VWAP"
+  ],
+  "open_interest": {
+    "ce_oi": 143701090.0,
+    "expiry": "2026-11-09",
+    "max_ce_oi_strike": 25000.0,
+    "max_pe_oi_strike": 23000.0,
+    "note": "highest CE OI is often read as resistance and highest PE OI as support; descriptive only",
+    "pcr_oi": 1.345,
+    "pe_oi": 193262160.0
+  },
+  "previous_day": {
+    "close": 23960.6,
+    "date": "2026-11-04",
+    "high": 23960.6,
+    "low": 23696.15,
+    "open": 23742.25
+  },
+  "sources": {
+    "fo": {
+      "sha256": "1ac402c56f92baaa7ffa8ecbc8e499b80f87c172b5f2e0c9e87975a92f692809",
+      "url": "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261105_F_0000.csv.zip"
+    },
+    "index": {
+      "url": "https://nsearchives.nseindia.com/content/indices/ind_close_all_05112026.csv"
+    }
+  },
+  "summary": [
+    "NIFTY closed 24536.60 (+576.00).",
+    "Daily trend: up.",
+    "Daily sweep: none."
+  ],
+  "trades_simulated": 0,
+  "trend": {
+    "close": 24536.6,
+    "detail": "close above EMA20 23222.24; EMA20 rose 394.72 points over 5 sessions",
+    "ema": 23222.24,
+    "ema_change_5d": 394.72,
+    "status": "up"
+  },
+  "underlying_in_fo_file": 24536.6
+}
